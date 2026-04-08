@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Playfair Display", serif;
+
+  --color-bg: #F8F9FA;
+  --color-ink: #1A1A1A;
+  --color-line: #E5E7EB;
+  --color-accent: #2563EB;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif font-bold italic tracking-tight;
+  }
+}
+
+/* Custom scroller */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full hover:bg-gray-400 transition-colors;
+}
+
+/* Technical Grid Pattern */
+.bg-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, #E5E7EB 1px, transparent 1px),
+    linear-gradient(to bottom, #E5E7EB 1px, transparent 1px);
+}
+
+/* Glass effect */
+.glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
+}
+
+/* Tooltip custom styling */
+.tooltip-content {
+  @apply invisible group-hover/tooltip:visible absolute z-50 p-3 bg-ink text-white text-[10px] font-mono leading-relaxed w-64 -translate-y-full -translate-x-1/2 left-1/2 mb-2 shadow-xl border border-white/10 rounded-sm;
+}
+
+.tooltip-content::after {
+  content: '';
+  @apply absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-ink;
+}
+
+/* Brutalist card refinement */
+.brutal-card {
+  @apply bg-white border border-ink shadow-[2px_2px_0px_0px_rgba(26,26,26,1)] transition-all hover:shadow-[4px_4px_0px_0px_rgba(26,26,26,1)] hover:-translate-x-0.5 hover:-translate-y-0.5;
+}
+
+.brutal-btn {
+  @apply px-4 py-2 bg-white border border-ink shadow-[2px_2px_0px_0px_rgba(26,26,26,1)] font-mono text-[10px] uppercase tracking-wider transition-all hover:bg-ink hover:text-white active:shadow-none active:translate-x-[2px] active:translate-y-[2px];
+}
