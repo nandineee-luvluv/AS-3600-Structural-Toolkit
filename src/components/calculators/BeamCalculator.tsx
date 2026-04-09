@@ -1,38 +1,60 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { InputGroup, InputField, ResultRow } from '../ui/InputGrid';
+import { SectionLibraryManager } from '../SectionLibraryManager';
 import { 
   calculateFlexuralCapacity, 
   calculateShearCapacity, 
   calculateRequiredBeamReinforcement, 
   calculateSeismicDetailing, 
   validateInput, 
-  LOAD_COMBINATIONS,
-  BEAM_END_CONDITIONS
+  BEAM_END_CONDITIONS,
+  SectionShape,
+  REINFORCEMENT_TYPES
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { SeismicDetailing } from '../ui/SeismicDetailing';
 import { ExportActions } from '../ui/ExportActions';
+import { ComplianceInfo } from '../ui/ComplianceInfo';
 import { useHistory } from '../../contexts/HistoryContext';
+import { useLoadCombinations } from '../../contexts/LoadCombinationContext';
+import { useSections } from '../../contexts/SectionContext';
+import { useMaterials } from '../../contexts/MaterialContext';
 import { cn } from '../../lib/utils';
 
 const BeamCalculator: React.FC = () => {
   const { addToHistory } = useHistory();
+  const { combinations } = useLoadCombinations();
+  const { library } = useSections();
+  const { customMaterials, addMaterial } = useMaterials();
+  
   // Section Geometry
+  const [shape, setShape] = useState<SectionShape>('rectangular');
   const [b, setB] = useState(300);
   const [h, setH] = useState(600);
+  const [bf, setBf] = useState(600);
+  const [tf, setTf] = useState(150);
+  const [tw, setTw] = useState(200);
+  const [b_top, setBTop] = useState(400);
+  const [b_bottom, setBBottom] = useState(200);
   const [L, setL] = useState(6000); // Span in mm
   const [cover, setCover] = useState(40);
   const [barDiam, setBarDiam] = useState(20);
   const [compBarDiam, setCompBarDiam] = useState(16);
 
   // Reinforcement
-  const [nBars, setNBars] = useState(3);
-  const [nCompBars, setNCompBars] = useState(0);
+  const [nBarsI, setNBarsI] = useState(3);
+  const [nBarsMid, setNBarsMid] = useState(3);
+  const [nBarsJ, setNBarsJ] = useState(3);
+  const [nCompBarsI, setNCompBarsI] = useState(0);
+  const [nCompBarsMid, setNCompBarsMid] = useState(0);
+  const [nCompBarsJ, setNCompBarsJ] = useState(0);
   const [nShearLegs, setNShearLegs] = useState(2);
   const [shearBarDiam, setShearBarDiam] = useState(10);
-  const [shearSpacing, setShearSpacing] = useState(200);
+  const [shearSpacingI, setShearSpacingI] = useState(150);
+  const [shearSpacingMid, setShearSpacingMid] = useState(300);
+  const [shearSpacingJ, setShearSpacingJ] = useState(150);
   const [reinforcementMode, setReinforcementMode] = useState<'singly' | 'doubly'>('singly');
 
   // End Conditions
@@ -48,6 +70,45 @@ const BeamCalculator: React.FC = () => {
   const [wLoad, setWLoad] = useState(0); // Wind load (kN/m)
   const [eLoad, setELoad] = useState(0); // Seismic load (kN/m)
   const [selectedComboId, setSelectedComboId] = useState('1.2G_1.5Q');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+
+  const [mStarI, setMStarI] = useState(0);
+  const [mStarMid, setMStarMid] = useState(0);
+  const [mStarJ, setMStarJ] = useState(0);
+  const [vStarEnd, setVStarEnd] = useState(0);
+  const [vStarMid, setVStarMid] = useState(0);
+
+  const [activeZone, setActiveZone] = useState<'I' | 'Mid' | 'J'>('Mid');
+
+  // Auto-calculate loads when inputs change
+  useEffect(() => {
+    const combo = combinations.find(c => c.id === selectedComboId) || combinations[0];
+    const wStar = gLoad * combo.factors.G + qLoad * combo.factors.Q + wLoad * combo.factors.W + eLoad * combo.factors.E;
+    const endCondition = BEAM_END_CONDITIONS.find(ec => ec.id === endConditionId)!;
+    
+    const mid = endCondition.k_moment * wStar * Math.pow(L / 1000, 2);
+    const end = endConditionId === 'simply-supported' ? 0 : -mid * 1.5;
+    const vEnd = endCondition.k_shear * wStar * (L / 1000);
+    
+    setMStarMid(mid);
+    setMStarI(end);
+    setMStarJ(end);
+    setVStarEnd(vEnd);
+    setVStarMid(vEnd * 0.3);
+  }, [gLoad, qLoad, wLoad, eLoad, selectedComboId, endConditionId, L, combinations]);
+
+  const handleSectionSelect = (section: any) => {
+    setShape(section.shape || 'rectangular');
+    if (section.b) setB(section.b);
+    if (section.h) setH(section.h);
+    if (section.bf) setBf(section.bf);
+    if (section.tf) setTf(section.tf);
+    if (section.tw) setTw(section.tw);
+    if (section.b_top) setBTop(section.b_top);
+    if (section.b_bottom) setBBottom(section.b_bottom);
+    if (section.L) setL(section.L);
+    if (section.cover) setCover(section.cover);
+  };
 
   // Validation
   const errors = useMemo(() => {
@@ -62,58 +123,80 @@ const BeamCalculator: React.FC = () => {
   }, [b, h, L, cover, fc, fsy]);
 
   // Derived Values
-  const combo = LOAD_COMBINATIONS.find(c => c.id === selectedComboId)!;
+  const combo = combinations.find(c => c.id === selectedComboId) || combinations[0];
   const endCondition = BEAM_END_CONDITIONS.find(ec => ec.id === endConditionId)!;
   
   const wStar = gLoad * combo.factors.G + qLoad * combo.factors.Q + wLoad * combo.factors.W + eLoad * combo.factors.E;
-  const mStar = endCondition.k_moment * wStar * Math.pow(L / 1000, 2);
-  const vStar = endCondition.k_shear * wStar * (L / 1000);
-
+  
   const d = h - cover - shearBarDiam - barDiam / 2;
   const dc = cover + shearBarDiam + compBarDiam / 2;
-  const Ast = nBars * (Math.PI * Math.pow(barDiam, 2)) / 4;
-  const Asc = nCompBars * (Math.PI * Math.pow(compBarDiam, 2)) / 4;
+  
+  const AstI = nBarsI * (Math.PI * Math.pow(barDiam, 2)) / 4;
+  const AstMid = nBarsMid * (Math.PI * Math.pow(barDiam, 2)) / 4;
+  const AstJ = nBarsJ * (Math.PI * Math.pow(barDiam, 2)) / 4;
+  
+  const AscI = nCompBarsI * (Math.PI * Math.pow(compBarDiam, 2)) / 4;
+  const AscMid = nCompBarsMid * (Math.PI * Math.pow(compBarDiam, 2)) / 4;
+  const AscJ = nCompBarsJ * (Math.PI * Math.pow(compBarDiam, 2)) / 4;
   const Asv = nShearLegs * (Math.PI * Math.pow(shearBarDiam, 2)) / 4;
 
-  const flexure = useMemo(() => {
+  const effectiveB = useMemo(() => {
+    if (shape === 't-beam' || shape === 'l-beam') return tw;
+    if (shape === 'trapezoidal') return (b_top + b_bottom) / 2;
+    return b;
+  }, [shape, b, tw, b_top, b_bottom]);
+
+  const flexureI = useMemo(() => {
     return calculateFlexuralCapacity(
-      { b, d, h, Ast, Asc, dc },
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstI, Asc: AscI, dc },
       { fc, fsy, Es: 200000 }
     );
-  }, [b, d, h, Ast, Asc, dc, fc, fsy]);
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstI, AscI, dc, fc, fsy]);
 
-  const required = useMemo(() => {
-    const req = calculateRequiredBeamReinforcement(b, d, mStar, { fc, fsy, Es: 200000 });
-    if (reinforcementMode === 'singly') return { ...req, Asc_req: 0, isDoublyRequired: false };
-    if (reinforcementMode === 'doubly') return { ...req, isDoublyRequired: true };
-    return req;
-  }, [b, d, mStar, fc, fsy, reinforcementMode]);
-
-  const shear = useMemo(() => {
-    return calculateShearCapacity(
-      { b, d, h, Ast },
-      { fc, fsy, Es: 200000 },
-      Asv,
-      shearSpacing
+  const flexureMid = useMemo(() => {
+    return calculateFlexuralCapacity(
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstMid, Asc: AscMid, dc },
+      { fc, fsy, Es: 200000 }
     );
-  }, [b, d, h, Ast, fc, fsy, Asv, shearSpacing]);
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstMid, AscMid, dc, fc, fsy]);
 
-  const seismic = useMemo(() => {
-    return calculateSeismicDetailing('beam', { b, h, d, db: barDiam, ds: shearBarDiam, s: shearSpacing, fc });
-  }, [b, h, d, barDiam, shearBarDiam, shearSpacing, fc]);
+  const flexureJ = useMemo(() => {
+    return calculateFlexuralCapacity(
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstJ, Asc: AscJ, dc },
+      { fc, fsy, Es: 200000 }
+    );
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstJ, AscJ, dc, fc, fsy]);
 
-  const flexureStatus = flexure.phiMu >= mStar ? 'pass' : 'fail';
-  const shearStatus = shear.phiVu >= vStar ? 'pass' : 'fail';
-  const ductilityStatus = flexure.isDuctile ? 'pass' : 'fail';
+  const shearI = useMemo(() => {
+    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstI }, { fc, fsy, Es: 200000 }, Asv, shearSpacingI);
+  }, [effectiveB, d, h, AstI, fc, fsy, Asv, shearSpacingI]);
+
+  const shearMid = useMemo(() => {
+    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstMid }, { fc, fsy, Es: 200000 }, Asv, shearSpacingMid);
+  }, [effectiveB, d, h, AstMid, fc, fsy, Asv, shearSpacingMid]);
+
+  const shearJ = useMemo(() => {
+    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstJ }, { fc, fsy, Es: 200000 }, Asv, shearSpacingJ);
+  }, [effectiveB, d, h, AstJ, fc, fsy, Asv, shearSpacingJ]);
+
+  const flexureStatusI = flexureI.phiMu >= Math.abs(mStarI) ? 'pass' : 'fail';
+  const flexureStatusMid = flexureMid.phiMu >= Math.abs(mStarMid) ? 'pass' : 'fail';
+  const flexureStatusJ = flexureJ.phiMu >= Math.abs(mStarJ) ? 'pass' : 'fail';
+
+  const shearStatusI = shearI.phiVu >= vStarEnd ? 'pass' : 'fail';
+  const shearStatusMid = shearMid.phiVu >= vStarMid ? 'pass' : 'fail';
+  const shearStatusJ = shearJ.phiVu >= vStarEnd ? 'pass' : 'fail';
 
   // Lock compression bars to 0 if singly reinforced
   useEffect(() => {
     if (reinforcementMode === 'singly') {
-      setNCompBars(0);
+      setNCompBarsI(0);
+      setNCompBarsMid(0);
+      setNCompBarsJ(0);
     }
   }, [reinforcementMode]);
 
-  const modeWarning = reinforcementMode === 'singly' && required.isDoublyRequired 
+  const modeWarning = reinforcementMode === 'singly' && flexureMid.ku > 0.36 
     ? "Singly reinforced section insufficient. Double reinforcement recommended."
     : null;
 
@@ -124,12 +207,12 @@ const BeamCalculator: React.FC = () => {
       addToHistory({
         type: 'Beam Design',
         title: `${b}x${h} Beam - ${endCondition.label}`,
-        inputs: { b, h, fc, fsy, mStar, endCondition: endCondition.label },
-        results: { phiMu: flexure.phiMu, ku: flexure.ku, phiVu: shear.phiVu }
+        inputs: { b, h, fc, fsy, mStarMid, endCondition: endCondition.label },
+        results: { phiMu: flexureMid.phiMu, ku: flexureMid.ku, phiVu: shearMid.phiVu }
       });
     }, 3000);
     return () => clearTimeout(timer);
-  }, [b, h, fc, fsy, nBars, barDiam, mStar, endConditionId]);
+  }, [b, h, fc, fsy, nBarsMid, barDiam, mStarMid, endConditionId, addToHistory, errors, endCondition.label, flexureMid.phiMu, flexureMid.ku, shearMid.phiVu]);
 
   const exportInputs = [
     { label: 'Width (b)', value: b, unit: 'mm' },
@@ -137,17 +220,40 @@ const BeamCalculator: React.FC = () => {
     { label: 'Span (L)', value: L, unit: 'mm' },
     { label: 'End Condition', value: endCondition.label },
     { label: 'Concrete Grade (fc)', value: fc, unit: 'MPa' },
-    { label: 'Design Moment (M*)', value: mStar.toFixed(1), unit: 'kNm' },
+    { label: 'Design Moment Mid (M*)', value: mStarMid.toFixed(1), unit: 'kNm' },
   ];
 
   const exportResults = [
-    { label: 'Capacity (phiMu)', value: flexure.phiMu.toFixed(1), unit: 'kNm', status: flexureStatus },
-    { label: 'Neutral Axis (ku)', value: flexure.ku.toFixed(3), status: ductilityStatus },
-    { label: 'Shear Capacity (phiVu)', value: shear.phiVu.toFixed(1), unit: 'kN', status: shearStatus },
+    { 
+      label: 'Capacity Mid (phiMu)', 
+      value: flexureMid.phiMu.toFixed(1), 
+      unit: 'kNm', 
+      status: flexureStatusMid,
+      clause: '8.1.3',
+      equation: `\\phi M_u = ${flexureMid.phi.toFixed(2)} \\cdot A_{st} f_{sy} (d - \\gamma k_u d / 2)`
+    },
+    { 
+      label: 'Neutral Axis Mid (ku)', 
+      value: flexureMid.ku.toFixed(3), 
+      status: flexureMid.ku <= 0.36 ? 'pass' : 'fail',
+      clause: '8.1.5',
+      equation: 'k_u = (A_{st} f_{sy}) / (\\alpha_2 f\'_c b \\gamma d)'
+    },
+    { 
+      label: 'Shear Capacity Mid (phiVu)', 
+      value: shearMid.phiVu.toFixed(1), 
+      unit: 'kN', 
+      status: shearStatusMid,
+      clause: '8.2.3',
+      equation: '\\phi V_u = \\phi (V_{uc} + V_{us})'
+    },
   ];
+
+  const reinforcementType = REINFORCEMENT_TYPES.find(t => t.fsy === fsy)?.label || `${fsy} MPa Steel`;
 
   const procedure = `
 # AS 3600 Beam Design Procedure (AS 1170 Loads)
+Reinforcement: ${reinforcementType}
 w_star = g*G + q*Q + w*W + e*E
 m_star = k_moment * w_star * L^2
 v_star = k_shear * w_star * L
@@ -177,22 +283,22 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
           <div className="flex gap-2">
             <div className={cn(
               "px-4 py-2 border border-ink shadow-[2px_2px_0px_0px_rgba(26,26,26,1)]",
-              flexureStatus === 'pass' ? 'bg-green-50' : 'bg-red-50'
+              flexureStatusMid === 'pass' ? 'bg-green-50' : 'bg-red-50'
             )}>
               <div className="text-[8px] font-mono uppercase opacity-40 leading-none mb-1">Flexure</div>
               <div className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-wider">
-                {flexureStatus === 'pass' ? <CheckCircle2 size={12} className="text-green-600" /> : <XCircle size={12} className="text-red-600" />}
-                {flexureStatus}
+                {flexureStatusMid === 'pass' ? <CheckCircle2 size={12} className="text-green-600" /> : <XCircle size={12} className="text-red-600" />}
+                {flexureStatusMid}
               </div>
             </div>
             <div className={cn(
               "px-4 py-2 border border-ink shadow-[2px_2px_0px_0px_rgba(26,26,26,1)]",
-              ductilityStatus === 'pass' ? 'bg-green-50' : 'bg-red-50'
+              flexureMid.ku <= 0.36 ? 'bg-green-50' : 'bg-red-50'
             )}>
               <div className="text-[8px] font-mono uppercase opacity-40 leading-none mb-1">Ductility</div>
               <div className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-wider">
-                {ductilityStatus === 'pass' ? <ShieldCheck size={12} className="text-green-600" /> : <AlertTriangle size={12} className="text-yellow-600" />}
-                {ductilityStatus}
+                {flexureMid.ku <= 0.36 ? <ShieldCheck size={12} className="text-green-600" /> : <AlertTriangle size={12} className="text-yellow-600" />}
+                {flexureMid.ku <= 0.36 ? 'pass' : 'fail'}
               </div>
             </div>
           </div>
@@ -214,17 +320,57 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
         {/* Inputs */}
         <div className="lg:col-span-2 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="col-span-2">
+              <SectionLibraryManager type="beams" onSelect={handleSectionSelect} />
+            </div>
             <InputGroup title="Materials Database">
-              <MaterialSelector fc={fc} setFc={setFc} fsy={fsy} setFsy={setFsy} />
+              <MaterialSelector 
+                fc={fc} 
+                setFc={setFc} 
+                fsy={fsy} 
+                setFsy={setFsy} 
+                customMaterials={customMaterials}
+                onAddCustomMaterial={(m) => addMaterial({ ...m, type: m.fc > 100 ? 'steel' : 'concrete' })}
+              />
             </InputGroup>
             <LoadCombinationSelector selectedId={selectedComboId} onSelect={setSelectedComboId} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <InputGroup title="Geometry & Support">
-              <InputField label="Width (b)" value={b} onChange={setB} unit="mm" tooltip="Width of the rectangular beam section." />
-              <InputField label="Height (h)" value={h} onChange={setH} unit="mm" tooltip="Overall depth of the beam section." />
-              <InputField label="Span (L)" value={L} onChange={setL} unit="mm" tooltip="Clear span length of the beam." />
+              <div className="p-4 bg-gray-50 space-y-2 border-b border-line">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Section Shape</label>
+                <select 
+                  value={shape}
+                  onChange={(e) => setShape(e.target.value as SectionShape)}
+                  className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                >
+                  <option value="rectangular">Rectangular</option>
+                  <option value="t-beam">T-Beam</option>
+                  <option value="l-beam">L-Beam</option>
+                  <option value="trapezoidal">Trapezoidal</option>
+                </select>
+              </div>
+
+              {shape === 'rectangular' && (
+                <InputField label="Width (b)" value={b} onChange={setB} unit="mm" />
+              )}
+              {(shape === 't-beam' || shape === 'l-beam') && (
+                <>
+                  <InputField label="Flange Width (bf)" value={bf} onChange={setBf} unit="mm" />
+                  <InputField label="Slab Thickness (tf)" value={tf} onChange={setTf} unit="mm" />
+                  <InputField label="Web Width (tw)" value={tw} onChange={setTw} unit="mm" />
+                </>
+              )}
+              {shape === 'trapezoidal' && (
+                <>
+                  <InputField label="Top Width (b_top)" value={b_top} onChange={setBTop} unit="mm" />
+                  <InputField label="Bottom Width (b_bottom)" value={b_bottom} onChange={setBBottom} unit="mm" />
+                </>
+              )}
+
+              <InputField label="Total Height (h)" value={h} onChange={setH} unit="mm" />
+              <InputField label="Span (L)" value={L} onChange={setL} unit="mm" />
               <div className="p-4 bg-gray-50 space-y-2 border-b border-line">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">End Condition</label>
                 <select 
@@ -237,79 +383,154 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                   ))}
                 </select>
               </div>
-              <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" tooltip="Clear cover to reinforcement." />
+              <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
             </InputGroup>
 
-            <InputGroup title="Reinforcement Mode">
-              <div className="p-4 bg-gray-50 space-y-4">
-                <div className="flex gap-1">
+            <InputGroup title="Reinforcement Details">
+              <div className="p-4 bg-gray-50 space-y-6">
+                <div className="flex border border-ink bg-white">
                   {(['singly', 'doubly'] as const).map(mode => (
                     <button
                       key={mode}
                       onClick={() => setReinforcementMode(mode)}
                       className={cn(
-                        "flex-1 py-2 text-[10px] font-mono uppercase tracking-widest border border-line transition-all",
-                        reinforcementMode === mode ? "bg-ink text-white border-ink shadow-md" : "bg-white text-ink/40 hover:bg-ink/5"
+                        "flex-1 py-3 text-[10px] font-mono uppercase tracking-widest transition-all border-r border-line last:border-r-0",
+                        reinforcementMode === mode ? "bg-ink text-white" : "text-ink/40 hover:bg-gray-50"
                       )}
                     >
                       {mode}
                     </button>
                   ))}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <InputField label="Tensile Bars" value={nBars} onChange={setNBars} unit="qty" />
-                  <InputField label="Bar Diam" value={barDiam} onChange={setBarDiam} unit="mm" />
-                  <InputField label="Comp. Bars" value={nCompBars} onChange={setNCompBars} unit="qty" disabled={reinforcementMode === 'singly'} />
-                  <InputField label="Comp. Diam" value={compBarDiam} onChange={setCompBarDiam} unit="mm" disabled={reinforcementMode === 'singly'} />
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField label="Bar Diam (db)" value={barDiam} onChange={setBarDiam} unit="mm" />
+                    <InputField label="Stirrup Diam (ds)" value={shearBarDiam} onChange={setShearBarDiam} unit="mm" />
+                    <InputField label="Comp. Diam" value={compBarDiam} onChange={setCompBarDiam} unit="mm" disabled={reinforcementMode === 'singly'} />
+                  </div>
+
+                  <div className="h-px bg-line opacity-10" />
+
+                  <div className="space-y-0">
+                    <div className="flex border border-ink bg-white">
+                      {(['I', 'Mid', 'J'] as const).map(zone => (
+                        <button
+                          key={zone}
+                          onClick={() => setActiveZone(zone)}
+                          className={cn(
+                            "flex-1 py-3 text-[10px] font-mono uppercase tracking-widest transition-all border-r border-line last:border-r-0",
+                            activeZone === zone ? "bg-ink text-white" : "text-ink/40 hover:bg-gray-50"
+                          )}
+                        >
+                          {zone === 'I' ? 'I-End' : zone === 'Mid' ? 'Middle' : 'J-End'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="bg-white border-x border-b border-line divide-y divide-line">
+                      {activeZone === 'I' && (
+                        <>
+                          <InputField label="Tensile Bars" value={nBarsI} onChange={setNBarsI} unit="qty" />
+                          <InputField label="Comp. Bars" value={nCompBarsI} onChange={setNCompBarsI} unit="qty" disabled={reinforcementMode === 'singly'} />
+                          <InputField label="Stirrup Spacing" value={shearSpacingI} onChange={setShearSpacingI} unit="mm" />
+                        </>
+                      )}
+                      {activeZone === 'Mid' && (
+                        <>
+                          <InputField label="Tensile Bars" value={nBarsMid} onChange={setNBarsMid} unit="qty" />
+                          <InputField label="Comp. Bars" value={nCompBarsMid} onChange={setNCompBarsMid} unit="qty" disabled={reinforcementMode === 'singly'} />
+                          <InputField label="Stirrup Spacing" value={shearSpacingMid} onChange={setShearSpacingMid} unit="mm" />
+                        </>
+                      )}
+                      {activeZone === 'J' && (
+                        <>
+                          <InputField label="Tensile Bars" value={nBarsJ} onChange={setNBarsJ} unit="qty" />
+                          <InputField label="Comp. Bars" value={nCompBarsJ} onChange={setNCompBarsJ} unit="qty" disabled={reinforcementMode === 'singly'} />
+                          <InputField label="Stirrup Spacing" value={shearSpacingJ} onChange={setShearSpacingJ} unit="mm" />
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </InputGroup>
           </div>
 
           <InputGroup title="Design Loads (AS 1170)">
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              <InputField label="Dead (G)" value={gLoad} onChange={setGLoad} unit="kN/m" />
-              <InputField label="Live (Q)" value={qLoad} onChange={setQLoad} unit="kN/m" />
-              <InputField label="Wind (Wu)" value={wLoad} onChange={setWLoad} unit="kN/m" />
-              <InputField label="Seismic (Eu)" value={eLoad} onChange={setELoad} unit="kN/m" />
-              <InputField label="Factored Load (w*)" value={wStar.toFixed(2)} onChange={() => {}} unit="kN/m" description="Factored distributed load" />
-              <InputField label="Factored Moment (M*)" value={mStar.toFixed(1)} onChange={() => {}} unit="kNm" description="At critical section" />
+            <InputField label="Dead (G)" value={gLoad} onChange={setGLoad} unit="kN/m" />
+            <InputField label="Live (Q)" value={qLoad} onChange={setQLoad} unit="kN/m" />
+            <InputField label="Wind (Wu)" value={wLoad} onChange={setWLoad} unit="kN/m" />
+            <InputField label="Seismic (Eu)" value={eLoad} onChange={setELoad} unit="kN/m" />
+            <InputField label="Factored Load (w*)" value={wStar.toFixed(2)} onChange={() => {}} unit="kN/m" description="Factored distributed load" />
+            <div className="grid grid-cols-3 gap-2 p-4 bg-gray-50 border-b border-line">
+              <div className="space-y-1">
+                <label className="text-[8px] font-mono uppercase opacity-40">M* I-End</label>
+                <input type="number" value={mStarI.toFixed(1)} onChange={(e) => setMStarI(Number(e.target.value))} className="w-full bg-white border border-line p-1 text-[10px] font-mono" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[8px] font-mono uppercase opacity-40">M* Middle</label>
+                <input type="number" value={mStarMid.toFixed(1)} onChange={(e) => setMStarMid(Number(e.target.value))} className="w-full bg-white border border-line p-1 text-[10px] font-mono" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[8px] font-mono uppercase opacity-40">M* J-End</label>
+                <input type="number" value={mStarJ.toFixed(1)} onChange={(e) => setMStarJ(Number(e.target.value))} className="w-full bg-white border border-line p-1 text-[10px] font-mono" />
+              </div>
             </div>
           </InputGroup>
 
           {/* Visualization */}
-          <div className="brutal-card p-12 flex flex-col items-center gap-12 bg-white bg-grid">
-            <div className="flex items-center gap-4 w-full max-w-md">
-              <div className="h-4 w-4 bg-ink rounded-full shrink-0 shadow-lg" />
-              <div className="h-1 bg-ink flex-1 relative">
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] font-mono uppercase tracking-[0.2em] bg-white px-2 border border-line">Span {L}mm</div>
-                {endConditionId === 'fixed-fixed' && (
-                  <div className="absolute -bottom-8 left-0 right-0 flex justify-between text-[8px] font-mono opacity-30 tracking-widest">
-                    <span>FIXED</span>
-                    <span>FIXED</span>
+          <div className="brutal-card p-8 bg-white bg-grid space-y-8">
+            <div className="flex flex-col items-center gap-8">
+              <h3 className="text-[10px] font-mono uppercase tracking-[0.2em] opacity-40 self-start">Longitudinal Section</h3>
+              <div className="w-full h-32 relative border-2 border-ink bg-white shadow-[4px_4px_0px_0px_rgba(26,26,26,0.1)] overflow-hidden">
+                {/* Zones */}
+                <div className="absolute inset-0 flex">
+                  <div className={cn("flex-1 border-r border-line border-dashed flex flex-col items-center justify-end pb-2", activeZone === 'I' && "bg-accent/5")}>
+                    <span className="text-[8px] font-mono opacity-30">I-END</span>
                   </div>
-                )}
-              </div>
-              <div className="h-4 w-4 bg-ink rounded-full shrink-0 shadow-lg" />
-            </div>
-            
-            <div 
-              className="border-2 border-ink relative bg-white shadow-[8px_8px_0px_0px_rgba(26,26,26,0.05)]"
-              style={{ width: b/2, height: h/2 }}
-            >
-              <div className="absolute bottom-4 left-0 right-0 flex justify-around px-2">
-                {Array.from({ length: nBars }).map((_, i) => (
-                  <div key={i} className="w-3 h-3 rounded-full bg-ink shadow-sm" />
-                ))}
-              </div>
-              {nCompBars > 0 && (
-                <div className="absolute top-4 left-0 right-0 flex justify-around px-2">
-                  {Array.from({ length: nCompBars }).map((_, i) => (
-                    <div key={i} className="w-2 h-2 rounded-full bg-ink/30" />
+                  <div className={cn("flex-1 border-r border-line border-dashed flex flex-col items-center justify-end pb-2", activeZone === 'Mid' && "bg-accent/5")}>
+                    <span className="text-[8px] font-mono opacity-30">MIDDLE</span>
+                  </div>
+                  <div className={cn("flex-1 flex flex-col items-center justify-end pb-2", activeZone === 'J' && "bg-accent/5")}>
+                    <span className="text-[8px] font-mono opacity-30">J-END</span>
+                  </div>
+                </div>
+                
+                {/* Main Bars */}
+                <div className="absolute bottom-4 left-2 right-2 h-1 bg-ink opacity-80" />
+                {/* Stirrups */}
+                <div className="absolute inset-x-2 top-2 bottom-2 flex justify-between pointer-events-none">
+                  {Array.from({ length: 30 }).map((_, i) => (
+                    <div key={i} className="w-px h-full bg-ink/10" />
                   ))}
                 </div>
-              )}
-              <div className="absolute inset-2 border border-ink/10 rounded-sm pointer-events-none" />
+                {/* Zone Indicators */}
+                <div className="absolute top-0 left-0 bottom-0 w-1/3 border-r-2 border-accent/20 pointer-events-none" />
+                <div className="absolute top-0 right-0 bottom-0 w-1/3 border-l-2 border-accent/20 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-8">
+              <h3 className="text-[10px] font-mono uppercase tracking-[0.2em] opacity-40 self-start">Cross Section</h3>
+              <div 
+                className="border-2 border-ink relative bg-white shadow-[8px_8px_0px_0px_rgba(26,26,26,0.05)]"
+                style={{ width: b/2, height: h/2 }}
+              >
+                <div className="absolute bottom-4 left-0 right-0 flex justify-around px-2">
+                  {Array.from({ length: activeZone === 'I' ? nBarsI : activeZone === 'Mid' ? nBarsMid : nBarsJ }).map((_, i) => (
+                    <div key={i} className="w-3 h-3 rounded-full bg-ink shadow-sm" />
+                  ))}
+                </div>
+                {(activeZone === 'I' ? nCompBarsI : activeZone === 'Mid' ? nCompBarsMid : nCompBarsJ) > 0 && (
+                  <div className="absolute top-4 left-0 right-0 flex justify-around px-2">
+                    {Array.from({ length: activeZone === 'I' ? nCompBarsI : activeZone === 'Mid' ? nCompBarsMid : nCompBarsJ }).map((_, i) => (
+                      <div key={i} className="w-2 h-2 rounded-full bg-ink/30" />
+                    ))}
+                  </div>
+                )}
+                <div className="absolute inset-2 border border-ink/10 rounded-sm pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
@@ -323,36 +544,31 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
             </div>
           )}
 
-          <InputGroup title="Required Steel">
-            <ResultRow label="Req. Tensile (Ast)" value={required.Ast_req.toFixed(0)} unit="mm²" />
-            <ResultRow label="Req. Comp. (Asc)" value={required.Asc_req.toFixed(0)} unit="mm²" />
-          </InputGroup>
-
-          <InputGroup title="Flexural Capacity">
-            <ResultRow label="Capacity (φMu)" value={flexure.phiMu.toFixed(1)} unit="kNm" status={flexureStatus} />
-            <ResultRow label="Neutral Axis (ku)" value={flexure.ku.toFixed(3)} status={ductilityStatus} />
-            {(endConditionId === 'fixed-fixed' || endConditionId === 'propped-cantilever') && (
-              <div className="mt-4 p-4 bg-accent/5 border-t border-accent/10 text-[10px] font-mono space-y-2">
-                <p className="font-bold uppercase text-accent tracking-widest">Multiple Sections Needed</p>
-                <div className="flex justify-between opacity-60">
-                  <span>Support Moment:</span>
-                  <span className="font-bold">{(mStar).toFixed(1)} kNm</span>
-                </div>
-                <div className="flex justify-between opacity-60">
-                  <span>Midspan Moment:</span>
-                  <span className="font-bold">{(endConditionId === 'fixed-fixed' ? mStar * 0.5 : mStar * 0.56).toFixed(1)} kNm</span>
-                </div>
-                <p className="mt-3 opacity-40 italic leading-relaxed">Design reinforcement for both support (top) and midspan (bottom) critical sections.</p>
+          <InputGroup title="Design Summary (By Zone)">
+            <div className="space-y-6">
+              <div className="p-4 bg-gray-50 border-b border-line">
+                <p className="text-[8px] font-mono uppercase opacity-40 mb-2">I-End (L/3)</p>
+                <ResultRow label="Moment M*" value={Math.abs(mStarI).toFixed(1)} unit="kNm" />
+                <ResultRow label="Capacity φMu" value={flexureI.phiMu.toFixed(1)} unit="kNm" status={flexureStatusI} />
+                <ResultRow label="Shear V*" value={vStarEnd.toFixed(1)} unit="kN" />
+                <ResultRow label="Capacity φVu" value={shearI.phiVu.toFixed(1)} unit="kN" status={shearStatusI} />
               </div>
-            )}
+              <div className="p-4 bg-gray-50 border-b border-line">
+                <p className="text-[8px] font-mono uppercase opacity-40 mb-2">Middle (L/3)</p>
+                <ResultRow label="Moment M*" value={Math.abs(mStarMid).toFixed(1)} unit="kNm" />
+                <ResultRow label="Capacity φMu" value={flexureMid.phiMu.toFixed(1)} unit="kNm" status={flexureStatusMid} />
+                <ResultRow label="Shear V*" value={vStarMid.toFixed(1)} unit="kN" />
+                <ResultRow label="Capacity φVu" value={shearMid.phiVu.toFixed(1)} unit="kN" status={shearStatusMid} />
+              </div>
+              <div className="p-4 bg-gray-50">
+                <p className="text-[8px] font-mono uppercase opacity-40 mb-2">J-End (L/3)</p>
+                <ResultRow label="Moment M*" value={Math.abs(mStarJ).toFixed(1)} unit="kNm" />
+                <ResultRow label="Capacity φMu" value={flexureJ.phiMu.toFixed(1)} unit="kNm" status={flexureStatusJ} />
+                <ResultRow label="Shear V*" value={vStarEnd.toFixed(1)} unit="kN" />
+                <ResultRow label="Capacity φVu" value={shearJ.phiVu.toFixed(1)} unit="kN" status={shearStatusJ} />
+              </div>
+            </div>
           </InputGroup>
-
-          <InputGroup title="Shear Capacity">
-            <InputField label="Factored Shear (V*)" value={vStar.toFixed(1)} onChange={() => {}} unit="kN" />
-            <ResultRow label="Capacity (φVu)" value={shear.phiVu.toFixed(1)} unit="kN" status={shearStatus} />
-          </InputGroup>
-
-          <SeismicDetailing requirements={seismic} />
 
           <div className="p-6 bg-ink text-white rounded-sm space-y-4">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] opacity-50">

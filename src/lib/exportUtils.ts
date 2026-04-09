@@ -12,6 +12,8 @@ export interface DesignResult {
   value: string | number;
   unit?: string;
   status?: string;
+  equation?: string;
+  clause?: string;
 }
 
 export interface DesignInput {
@@ -49,13 +51,24 @@ export function exportToPDF(
 
   // Results Table
   const finalY = (doc as any).lastAutoTable.finalY || 55;
-  doc.text('Design Results', 14, finalY + 15);
+  doc.text('Design Results & Compliance', 14, finalY + 15);
   doc.autoTable({
     startY: finalY + 20,
-    head: [['Check', 'Value', 'Unit', 'Status']],
-    body: results.map(r => [r.label, r.value, r.unit || '-', r.status || '-']),
+    head: [['Check', 'Value', 'Unit', 'Status', 'Clause', 'Formula']],
+    body: results.map(r => [
+      r.label, 
+      r.value, 
+      r.unit || '-', 
+      r.status || '-', 
+      r.clause || '-', 
+      r.equation || '-'
+    ]),
     theme: 'grid',
     headStyles: { fillStyle: [20, 20, 20] },
+    styles: { fontSize: 8 },
+    columnStyles: {
+      5: { cellWidth: 50 } // Formula column width
+    },
     didParseCell: (data: any) => {
       if (data.section === 'body' && data.column.index === 3) {
         if (data.cell.raw === 'pass') data.cell.styles.textColor = [0, 128, 0];

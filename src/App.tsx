@@ -25,11 +25,15 @@ import SlabCalculator from './components/calculators/SlabCalculator';
 import WallCalculator from './components/calculators/WallCalculator';
 import RetainingWallCalculator from './components/calculators/RetainingWallCalculator';
 import { MaterialSettings } from './components/MaterialSettings';
+import { SectionLibraryManager } from './components/SectionLibraryManager';
 import { HistoryProvider } from './contexts/HistoryContext';
+import { LoadCombinationProvider } from './contexts/LoadCombinationContext';
+import { SectionProvider } from './contexts/SectionContext';
+import { MaterialProvider } from './contexts/MaterialContext';
 import { HistoryView } from './components/HistoryView';
 import { cn } from './lib/utils';
 
-type MemberType = 'beam' | 'column' | 'slab' | 'wall' | 'retaining-wall' | 'materials' | 'history';
+type MemberType = 'beam' | 'column' | 'slab' | 'wall' | 'retaining-wall' | 'materials' | 'sections' | 'history';
 
 function AppContent() {
   const [activeMember, setActiveMember] = useState<MemberType>('beam');
@@ -105,7 +109,7 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative scroll-smooth">
-        <div className="max-w-5xl mx-auto p-12">
+        <div className="max-w-[1400px] mx-auto p-12">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeMember}
@@ -132,7 +136,13 @@ function AppContent() {
 export default function App() {
   return (
     <HistoryProvider>
-      <AppContent />
+      <LoadCombinationProvider>
+        <SectionProvider>
+          <MaterialProvider>
+            <AppContent />
+          </MaterialProvider>
+        </SectionProvider>
+      </LoadCombinationProvider>
     </HistoryProvider>
   );
 }

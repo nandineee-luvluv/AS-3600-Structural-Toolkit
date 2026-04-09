@@ -50,7 +50,7 @@ export const InputField: React.FC<InputFieldProps> = ({
             <span className="text-[10px] text-ink/40 italic mt-0.5 block">{description}</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <input
             type="number"
             value={value}
@@ -58,7 +58,7 @@ export const InputField: React.FC<InputFieldProps> = ({
             min={min}
             max={max}
             step={step}
-            className="w-24 bg-transparent border-b border-line focus:border-accent outline-none text-right font-mono text-sm px-1 py-0.5 transition-colors"
+            className="w-32 bg-transparent border-b border-line focus:border-accent outline-none text-right font-mono text-sm px-1 py-0.5 transition-colors"
           />
           {unit && (
             <span className="w-10 text-[10px] font-mono text-ink/30 uppercase">

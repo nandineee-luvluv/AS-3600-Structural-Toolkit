@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { InputGroup, InputField, ResultRow } from './ui/InputGrid';
-import { CONCRETE_GRADES, STEEL_GRADES, getConcreteEc } from '../lib/as3600';
-import { Save, RefreshCcw, CheckCircle2 } from 'lucide-react';
+import { CONCRETE_GRADES, REINFORCEMENT_TYPES, getConcreteEc } from '../lib/as3600';
+import { Save, RefreshCcw, CheckCircle2, Trash2, Plus } from 'lucide-react';
+import { useMaterials } from '../contexts/MaterialContext';
 import { cn } from '../lib/utils';
 
 interface MaterialSettingsProps {
@@ -9,25 +10,24 @@ interface MaterialSettingsProps {
 }
 
 export const MaterialSettings: React.FC<MaterialSettingsProps> = ({ onSave }) => {
+  const { customMaterials, addMaterial, removeMaterial } = useMaterials();
   const [fc, setFc] = useState(32);
   const [fsy, setFsy] = useState(500);
   const [Es, setEs] = useState(200000);
   const [Ec, setEc] = useState(getConcreteEc(32));
   const [saved, setSaved] = useState(false);
 
-  // Mix Design State (kg/m3)
-  const [cement, setCement] = useState(350);
-  const [water, setWater] = useState(175);
-  const [sand, setSand] = useState(700);
-  const [aggregate, setAggregate] = useState(1100);
+  const [newCustom, setNewCustom] = useState({ label: '', fc: 32, fsy: 500, type: 'concrete' as 'concrete' | 'steel' });
 
   const handleFcChange = (val: number) => {
     setFc(val);
     setEc(getConcreteEc(val));
-    // Simple estimation logic
-    if (val <= 20) { setCement(300); setWater(180); setSand(800); setAggregate(1100); }
-    else if (val <= 32) { setCement(360); setWater(175); setSand(750); setAggregate(1050); }
-    else { setCement(420); setWater(170); setSand(700); setAggregate(1000); }
+  };
+
+  const handleAddCustom = () => {
+    if (!newCustom.label) return;
+    addMaterial(newCustom);
+    setNewCustom({ label: '', fc: 32, fsy: 500, type: 'concrete' });
   };
 
   const handleSave = () => {
@@ -39,78 +39,102 @@ export const MaterialSettings: React.FC<MaterialSettingsProps> = ({ onSave }) =>
   return (
     <div className="space-y-12">
       <header className="border-b border-line pb-8">
-        <h2 className="text-4xl font-serif font-bold italic tracking-tight text-ink">Material Properties</h2>
-        <p className="text-[10px] font-mono opacity-40 uppercase tracking-[0.3em] mt-2">Configure AS 3600 Material Database</p>
+        <h2 className="text-4xl font-serif font-bold italic tracking-tight text-ink">Material Database</h2>
+        <p className="text-[10px] font-mono opacity-40 uppercase tracking-[0.3em] mt-2">Manage AS 3600 & Custom Material Properties</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <div className="space-y-8">
-          <InputGroup title="Concrete Properties">
-            <div className="p-4 bg-gray-50 flex gap-1 flex-wrap mb-4 border-b border-line">
-              {CONCRETE_GRADES.map(g => (
-                <button 
-                  key={g} 
-                  onClick={() => handleFcChange(g)}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-mono border transition-all",
-                    fc === g ? 'bg-ink text-white border-ink shadow-sm' : 'bg-white border-line text-ink/40 hover:text-ink'
-                  )}
-                >
-                  {g} MPa
-                </button>
-              ))}
+          <InputGroup title="Add Custom Material">
+            <div className="p-6 bg-gray-50 space-y-4 border-b border-line">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-[8px] font-mono uppercase opacity-40 mb-1">Material Label</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. High Strength Mix A"
+                    value={newCustom.label}
+                    onChange={(e) => setNewCustom({ ...newCustom, label: e.target.value })}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-mono uppercase opacity-40 mb-1">Type</label>
+                  <select 
+                    value={newCustom.type}
+                    onChange={(e) => setNewCustom({ ...newCustom, type: e.target.value as any })}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono outline-none focus:border-accent"
+                  >
+                    <option value="concrete">Concrete</option>
+                    <option value="steel">Steel</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[8px] font-mono uppercase opacity-40 mb-1">{newCustom.type === 'concrete' ? "f'c (MPa)" : "fsy (MPa)"}</label>
+                  <input 
+                    type="number"
+                    value={newCustom.type === 'concrete' ? newCustom.fc : newCustom.fsy}
+                    onChange={(e) => setNewCustom({ ...newCustom, [newCustom.type === 'concrete' ? 'fc' : 'fsy']: parseInt(e.target.value) })}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+              <button 
+                onClick={handleAddCustom}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-3 text-[10px] font-mono uppercase tracking-widest hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={14} /> Add to Database
+              </button>
             </div>
-            <InputField label="Comp. Strength (f'c)" value={fc} onChange={handleFcChange} unit="MPa" />
-            <InputField label="Modulus (Ec)" value={Ec.toFixed(0)} onChange={(v) => setEc(v)} unit="MPa" />
           </InputGroup>
 
-          <InputGroup title="Concrete Mix Design (Indicative per m³)">
-            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 border-b border-line">
-              <InputField label="Cement" value={cement} onChange={setCement} unit="kg" />
-              <InputField label="Water" value={water} onChange={setWater} unit="kg" />
-              <InputField label="Fine Agg. (Sand)" value={sand} onChange={setSand} unit="kg" />
-              <InputField label="Coarse Agg." value={aggregate} onChange={setAggregate} unit="kg" />
-            </div>
-            <div className="p-4 text-[10px] font-mono opacity-40 italic">
-              W/C Ratio: {(water / cement).toFixed(2)} | Total Density: {(cement + water + sand + aggregate).toFixed(0)} kg/m³
+          <InputGroup title="Custom Materials List">
+            <div className="divide-y divide-line">
+              {customMaterials.length === 0 ? (
+                <div className="p-8 text-center text-[10px] font-mono opacity-40 italic">No custom materials added yet.</div>
+              ) : (
+                customMaterials.map(m => (
+                  <div key={m.id} className="p-4 flex items-center justify-between bg-white hover:bg-gray-50 transition-colors">
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase">{m.label}</p>
+                      <p className="text-[8px] font-mono opacity-40 uppercase">{m.type} | {m.type === 'concrete' ? `${m.fc} MPa` : `${m.fsy} MPa`}</p>
+                    </div>
+                    <button 
+                      onClick={() => removeMaterial(m.id)}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-sm transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </InputGroup>
-
-          <InputGroup title="Steel Properties">
-            <div className="p-4 bg-gray-50 flex gap-1 flex-wrap mb-4 border-b border-line">
-              {STEEL_GRADES.map(g => (
-                <button 
-                  key={g} 
-                  onClick={() => setFsy(g)}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-mono border transition-all",
-                    fsy === g ? 'bg-ink text-white border-ink shadow-sm' : 'bg-white border-line text-ink/40 hover:text-ink'
-                  )}
-                >
-                  {g} MPa
-                </button>
-              ))}
-            </div>
-            <InputField label="Yield Strength (fsy)" value={fsy} onChange={setFsy} unit="MPa" />
-            <InputField label="Modulus (Es)" value={Es} onChange={setEs} unit="MPa" />
-          </InputGroup>
-
-          <button 
-            onClick={handleSave}
-            className="w-full flex items-center justify-center gap-3 bg-ink text-white py-5 text-xs font-mono uppercase tracking-[0.2em] hover:bg-ink/90 transition-all shadow-xl"
-          >
-            {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
-            {saved ? 'Properties Saved' : 'Save Material Profile'}
-          </button>
         </div>
 
         <div className="space-y-8">
-          <InputGroup title="Property Summary">
-            <ResultRow label="Concrete f'c" value={fc} unit="MPa" />
-            <ResultRow label="Concrete Ec" value={(Ec/1000).toFixed(1)} unit="GPa" />
-            <ResultRow label="Steel fsy" value={fsy} unit="MPa" />
-            <ResultRow label="Steel Es" value={(Es/1000).toFixed(0)} unit="GPa" />
-            <ResultRow label="Modular Ratio (n)" value={(Es/Ec).toFixed(2)} />
+          <InputGroup title="Standard AS 3600 Grades">
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-[10px] font-mono uppercase opacity-40 mb-3">Concrete Grades</label>
+                <div className="flex flex-wrap gap-2">
+                  {CONCRETE_GRADES.map(g => (
+                    <span key={g} className="px-3 py-1 bg-gray-100 border border-line text-[10px] font-mono">{g} MPa</span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-mono uppercase opacity-40 mb-3">Reinforcement Types</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {REINFORCEMENT_TYPES.map(t => (
+                    <div key={t.id} className="p-2 border border-line bg-gray-50 flex justify-between items-center">
+                      <span className="text-[10px] font-mono">{t.label}</span>
+                      <span className="text-[10px] font-mono font-bold">{t.fsy} MPa</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </InputGroup>
 
           <div className="p-8 brutal-card bg-white">
@@ -121,10 +145,6 @@ export const MaterialSettings: React.FC<MaterialSettingsProps> = ({ onSave }) =>
               <li className="flex gap-4">
                 <span className="font-bold text-ink w-12 shrink-0">f'c:</span> 
                 <span>20, 25, 32, 40, 50, 65, 80, 100 MPa</span>
-              </li>
-              <li className="flex gap-4">
-                <span className="font-bold text-ink w-12 shrink-0">Ec:</span> 
-                <span>Calculated per Clause 3.1.2 based on density and f'c.</span>
               </li>
               <li className="flex gap-4">
                 <span className="font-bold text-ink w-12 shrink-0">fsy:</span> 

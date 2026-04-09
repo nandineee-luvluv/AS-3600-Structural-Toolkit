@@ -2,18 +2,23 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { InputGroup, InputField, ResultRow } from '../ui/InputGrid';
 import { calculateFlexuralCapacity } from '../../lib/as3600';
 import { 
-  validateInput, 
-  LOAD_COMBINATIONS 
+  validateInput 
 } from '../../lib/as3600';
 import { Info, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { ExportActions } from '../ui/ExportActions';
+import { ComplianceInfo } from '../ui/ComplianceInfo';
 import { useHistory } from '../../contexts/HistoryContext';
+import { useLoadCombinations } from '../../contexts/LoadCombinationContext';
+import { useMaterials } from '../../contexts/MaterialContext';
 import { cn } from '../../lib/utils';
 
 const RetainingWallCalculator: React.FC = () => {
   const { addToHistory } = useHistory();
+  const { combinations } = useLoadCombinations();
+  const { customMaterials, addMaterial } = useMaterials();
+  
   // Geometry
   const [H, setH] = useState(3000); // Stem height
   const [tw, setTw] = useState(300); // Stem thickness
@@ -48,7 +53,7 @@ const RetainingWallCalculator: React.FC = () => {
   }, [H, tw, B, fc]);
 
   // Derived Values
-  const combo = LOAD_COMBINATIONS.find(c => c.id === selectedComboId)!;
+  const combo = combinations.find(c => c.id === selectedComboId) || combinations[0];
   const factoredSurcharge = gSurcharge * combo.factors.G + qSurchargeVal * combo.factors.Q + wLoad * combo.factors.W + eLoad * combo.factors.E;
 
   // Reinforcement
@@ -135,9 +140,28 @@ const RetainingWallCalculator: React.FC = () => {
   ];
 
   const exportResults = [
-    { label: 'FOS Overturning', value: calculations.FOS_overturning.toFixed(2), status: calculations.FOS_overturning >= 1.5 ? 'pass' : 'fail' },
-    { label: 'FOS Sliding', value: calculations.FOS_sliding.toFixed(2), status: calculations.FOS_sliding >= 1.5 ? 'pass' : 'fail' },
-    { label: 'Max Bearing (q)', value: calculations.q_max.toFixed(1), unit: 'kPa', status: calculations.isBearingSafe ? 'pass' : 'fail' },
+    { 
+      label: 'FOS Overturning', 
+      value: calculations.FOS_overturning.toFixed(2), 
+      status: calculations.FOS_overturning >= 1.5 ? 'pass' : 'fail',
+      clause: 'AS 4678',
+      equation: 'FOS_{ot} = \\frac{M_r}{M_a} \\ge 1.5'
+    },
+    { 
+      label: 'FOS Sliding', 
+      value: calculations.FOS_sliding.toFixed(2), 
+      status: calculations.FOS_sliding >= 1.5 ? 'pass' : 'fail',
+      clause: 'AS 4678',
+      equation: 'FOS_{sl} = \\frac{V_r}{V_a} \\ge 1.5'
+    },
+    { 
+      label: 'Max Bearing (q)', 
+      value: calculations.q_max.toFixed(1), 
+      unit: 'kPa', 
+      status: calculations.isBearingSafe ? 'pass' : 'fail',
+      clause: 'Geotech',
+      equation: 'q_{max} = \\frac{P}{A} (1 + \\frac{6e}{B})'
+    },
   ];
 
   const procedure = `
@@ -196,7 +220,14 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
         <div className="lg:col-span-2 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <InputGroup title="Materials Database">
-              <MaterialSelector fc={fc} setFc={setFc} fsy={fsy} setFsy={setFsy} />
+              <MaterialSelector 
+                fc={fc} 
+                setFc={setFc} 
+                fsy={fsy} 
+                setFsy={setFsy} 
+                customMaterials={customMaterials}
+                onAddCustomMaterial={(m) => addMaterial({ ...m, type: m.fc > 100 ? 'steel' : 'concrete' })}
+              />
             </InputGroup>
             <LoadCombinationSelector selectedId={selectedComboId} onSelect={setSelectedComboId} />
           </div>
@@ -222,12 +253,10 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
           </div>
 
           <InputGroup title="Reinforcement">
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              <InputField label="Stem Bar Diam" value={barDiamStem} onChange={setBarDiamStem} unit="mm" />
-              <InputField label="Stem Spacing" value={barSpacingStem} onChange={setBarSpacingStem} unit="mm" />
-              <InputField label="Base Bar Diam" value={barDiamBase} onChange={setBarDiamBase} unit="mm" />
-              <InputField label="Base Spacing" value={barSpacingBase} onChange={setBarSpacingBase} unit="mm" />
-            </div>
+            <InputField label="Stem Bar Diam" value={barDiamStem} onChange={setBarDiamStem} unit="mm" />
+            <InputField label="Stem Spacing" value={barSpacingStem} onChange={setBarSpacingStem} unit="mm" />
+            <InputField label="Base Bar Diam" value={barDiamBase} onChange={setBarDiamBase} unit="mm" />
+            <InputField label="Base Spacing" value={barSpacingBase} onChange={setBarSpacingBase} unit="mm" />
           </InputGroup>
 
           {/* Visualization */}
@@ -251,6 +280,14 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
 
         <div className="space-y-8">
           <InputGroup title="Stability Checks">
+            <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
+              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Global Stability</p>
+              <ComplianceInfo 
+                clause="AS 4678" 
+                description="Stability checks for retaining structures against overturning and sliding."
+                equation="FOS = \frac{\text{Restoring}}{\text{Overturning}} \ge 1.5"
+              />
+            </div>
             <ResultRow label="Active Force (Pa)" value={calculations.Pa.toFixed(1)} unit="kN/m" />
             <ResultRow label="FOS Overturning" value={calculations.FOS_overturning.toFixed(2)} status={calculations.FOS_overturning >= 1.5 ? 'pass' : 'fail'} />
             <ResultRow label="FOS Sliding" value={calculations.FOS_sliding.toFixed(2)} status={calculations.FOS_sliding >= 1.5 ? 'pass' : 'fail'} />
@@ -258,6 +295,14 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
           </InputGroup>
 
           <InputGroup title="Structural Design">
+            <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
+              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Stem Strength</p>
+              <ComplianceInfo 
+                clause="AS 3600 8.1" 
+                description="Flexural capacity of the wall stem at the base junction."
+                equation="\phi M_u = \phi A_{st} f_{sy} (d - \frac{\gamma k_u d}{2})"
+              />
+            </div>
             <ResultRow label="Stem Moment (M*)" value={(calculations.Ma * 1.5).toFixed(1)} unit="kNm/m" />
             <ResultRow label="Stem Capacity (φMu)" value={calculations.phiMu_stem.toFixed(1)} unit="kNm/m" status={calculations.isStemSafe ? 'pass' : 'fail'} />
           </InputGroup>
