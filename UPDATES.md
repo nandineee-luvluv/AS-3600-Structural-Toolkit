@@ -28,14 +28,16 @@ The Slab Design module has been significantly upgraded to support a wider range 
 - **Instructions Guide**: Created `instructions.md` to guide future development and maintain architectural consistency.
 
 ## UI and Graphics Overhaul
+- **Wider Application Layout**: Increased the main content area width to **1400px** to provide a more professional, desktop-first workspace for technical data.
+- **Improved Input Visibility**: Increased input field widths to **128px** and tooltip widths to **320px** to prevent text truncation and improve readability of complex equations.
 - **Zone-Based Reinforcement Tabs**: Replaced congested grid layouts with a clean tabbed interface (I-End, Middle, J-End) for reinforcement inputs in all calculators.
 - **Longitudinal Visualizations**: Added longitudinal section views for beams and columns, and elevation views for walls, showing reinforcement zones and bar layouts.
 - **Manual Moment Overrides**: Added inputs for end moments (M* I-End, M* J-End) in the Beam Calculator, with auto-calculation as a default.
-- **Improved Layouts**: Increased spacing and optimized grid columns across all modules to reduce visual clutter.
 - **Interactive Feedback**: The active zone in reinforcement inputs is now visually highlighted in the corresponding diagram.
 
 ## Zone-Based Design Enhancements
-- **Beam Design**: Implemented zone-based reinforcement (I-end, Middle, J-end) for both flexure and shear. Added required compression steel calculations and stirrup spacing inputs for each zone.
+- **Beam Design**: Fully separated reinforcement inputs (Tensile Bars, Compression Bars, Stirrup Spacing) for I-End, Middle, and J-End zones.
+- **Wall Design**: Separated both **Horizontal** and **Vertical reinforcement spacing** into I-End, Middle, and J-End zones, allowing for precise detailing of boundary elements.
 - **Column & Wall Design**: Added zone-based shear reinforcement inputs and capacity checks. Users can now define end-zone lengths and specific stirrup/horizontal bar spacings for critical regions.
 - **Design Summary Reports**: Updated results sections to provide a clear breakdown of performance across all three design zones.
 

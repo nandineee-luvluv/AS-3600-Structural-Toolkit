@@ -35,6 +35,8 @@ This toolkit is a specialized structural engineering application based on the **
 - **Documentation**: Update `UPDATES.md` for every major feature and `instructions.md` for architectural changes.
 
 ### UI & Graphics Standards
+- **Wider Layout**: The application uses a `max-w-[1400px]` container to provide ample space for technical inputs and graphical results.
+- **Input Sizing**: Standard `InputField` components use a `w-32` (128px) input width to prevent truncation of engineering values.
 - **Zone-Based Inputs**: Use a tabbed interface for elements with multiple design zones (e.g., I-End, Mid, J-End) to avoid UI congestion.
 - **Visualizations**: Every calculator should include both a cross-section and a longitudinal/elevation view.
 - **Interactive Highlighting**: Use the `activeZone` state to highlight the relevant part of the visualization when a user is editing zone-specific inputs.
