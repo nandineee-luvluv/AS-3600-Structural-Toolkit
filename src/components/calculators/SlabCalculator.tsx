@@ -8,11 +8,17 @@ import {
   calculateBearingPressure,
   calculateFootingOneWayShear,
   calculateFlatPlateMoments,
+  checkCrackControl,
+  getMinimumReinforcement,
   validateInput, 
   BEAM_END_CONDITIONS,
-  REINFORCEMENT_TYPES
+  REINFORCEMENT_TYPES,
+  EXPOSURE_CLASSES,
+  FIRE_RATINGS,
+  getRequiredCover,
+  checkNCCCompliance
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, XCircle, Layout } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, XCircle, Layout, ShieldCheck } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { ExportActions } from '../ui/ExportActions';
@@ -90,6 +96,10 @@ const SlabCalculator: React.FC = () => {
   const [Ly, setLy] = useState(6000); // Long span
   const [endConditionId, setEndConditionId] = useState('simply-supported');
   const [selectedSectionId, setSelectedSectionId] = useState('');
+
+  // NCC & Durability
+  const [exposureClass, setExposureClass] = useState('A1');
+  const [fireRating, setFireRating] = useState('60');
 
   // Waffle Specific
   const [ribSpacing, setRibSpacing] = useState(600);
@@ -231,6 +241,24 @@ const SlabCalculator: React.FC = () => {
   const flexureStatus = (statusX === 'pass' && statusY === 'pass') ? 'pass' : 'fail';
   const overallStatus = (flexureStatus === 'pass' && statusPunching === 'pass' && statusDeflection === 'pass' && statusBearing === 'pass' && statusFootingShear === 'pass') ? 'pass' : 'fail';
 
+  // NCC Compliance Calculations
+  const requiredCover = getRequiredCover(exposureClass, fireRating);
+  const isDurable = cover >= requiredCover;
+  const minB = FIRE_RATINGS.find(f => f.id === fireRating)?.minCover || 0; // For slabs, cover is often the fire limit
+  const isFireSafe = h >= (minB * 2); // Simplified check for slab thickness vs fire cover
+  const isStructuralSafe = overallStatus === 'pass';
+  const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
+
+  // Refined Checks
+  const minAst = getMinimumReinforcement(1000, h, fc, fsy);
+  const isMinAstPass = AstX >= minAst;
+
+  const crackControl = useMemo(() => {
+    const z = 0.9 * d;
+    const sigma_s = (Math.abs(mxStar) * 1e6) / (AstX * z);
+    return checkCrackControl(barDiam, barSpacingX, sigma_s, exposureClass);
+  }, [mxStar, AstX, d, barDiam, barSpacingX, exposureClass]);
+
   // History Tracking
   useEffect(() => {
     if (errors.length > 0) return;
@@ -262,6 +290,21 @@ const SlabCalculator: React.FC = () => {
       status: statusX,
       clause: '9.1',
       equation: '\\phi M_u = \\phi A_{st} f_{sy} (d - \\gamma k_u d / 2)'
+    },
+    {
+      label: 'Min Reinforcement',
+      value: minAst.toFixed(0),
+      unit: 'mm2/m',
+      status: isMinAstPass ? 'pass' : 'fail',
+      clause: '9.1.1',
+      equation: 'A_{st,min} = 0.2 (h/d)^2 (f\'_{ct.f}/f_{sy}) b d'
+    },
+    {
+      label: 'Crack Control',
+      value: crackControl.isSafe ? 'PASS' : 'FAIL',
+      status: crackControl.isSafe ? 'pass' : 'fail',
+      clause: '9.4.1',
+      description: `Max spacing: ${crackControl.maxSpacing}mm, Max bar: ${crackControl.maxBarDiam}mm`
     },
     ...(flexureY ? [{ 
       label: 'Flexural Capacity (phiMu_y)', 
@@ -388,6 +431,36 @@ phi_mu = 0.85 * mu
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <InputGroup title="Design Parameters (NCC/AS)">
+              <div className="p-4 bg-gray-50 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Exposure Classification</label>
+                  <select 
+                    value={exposureClass}
+                    onChange={(e) => setExposureClass(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {EXPOSURE_CLASSES.map(ec => (
+                      <option key={ec.id} value={ec.id}>{ec.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Fire Resistance Period (FRP)</label>
+                  <select 
+                    value={fireRating}
+                    onChange={(e) => setFireRating(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {FIRE_RATINGS.map(fr => (
+                      <option key={fr.id} value={fr.id}>{fr.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+              </div>
+            </InputGroup>
+
             <InputGroup title="Geometry">
               {slabType === 'footing' ? (
                 <>
@@ -468,6 +541,47 @@ phi_mu = 0.85 * mu
 
         {/* Results */}
         <div className="space-y-8">
+          <InputGroup title="NCC Compliance & Durability">
+            <div className="p-4 bg-white space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-line">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className={cn("w-5 h-5", isNCCCompliant ? "text-green-600" : "text-red-600")} />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest">NCC Compliance Status</p>
+                    <p className="text-[8px] font-mono opacity-40">Performance Requirements B1.1 & B1.2</p>
+                  </div>
+                </div>
+                <span className={cn(
+                  "px-3 py-1 text-[10px] font-bold font-mono uppercase border-2",
+                  isNCCCompliant ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                )}>
+                  {isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <ResultRow 
+                  label="Structural Safety" 
+                  value={isStructuralSafe ? 'PASS' : 'FAIL'} 
+                  status={isStructuralSafe ? 'pass' : 'fail'} 
+                  tooltip="AS 1170 & AS 3600 Strength Requirements"
+                />
+                <ResultRow 
+                  label="Fire Resistance" 
+                  value={isFireSafe ? 'PASS' : 'FAIL'} 
+                  status={isFireSafe ? 'pass' : 'fail'} 
+                  tooltip={`Min thickness for ${fireRating}min FRP is ${minB * 2}mm`}
+                />
+                <ResultRow 
+                  label="Durability (Cover)" 
+                  value={isDurable ? 'PASS' : 'FAIL'} 
+                  status={isDurable ? 'pass' : 'fail'} 
+                  tooltip={`Required cover for ${exposureClass} is ${requiredCover}mm`}
+                />
+              </div>
+            </div>
+          </InputGroup>
+
           <div className="p-6 bg-white border-2 border-ink shadow-[4px_4px_0px_0px_rgba(26,26,26,1)] space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-[12px] font-mono font-bold uppercase tracking-widest">Design Summary</h3>
@@ -530,6 +644,12 @@ phi_mu = 0.85 * mu
               <>
                 <ResultRow label="Span/Depth Ratio" value={deflection.ratio.toFixed(1)} status={statusDeflection} />
                 <ResultRow label="Ratio Limit" value={deflection.limit.toFixed(1)} />
+                <ResultRow 
+                  label="Crack Control" 
+                  value={crackControl.isSafe ? 'PASS' : 'FAIL'} 
+                  status={crackControl.isSafe ? 'pass' : 'fail'} 
+                  tooltip={`Clause 9.4.1: Max spacing ${crackControl.maxSpacing}mm, Max bar ${crackControl.maxBarDiam}mm`}
+                />
               </>
             )}
             <ResultRow label="Punching Capacity" value={punching.phiVuo.toFixed(0)} unit="kN" status={statusPunching} />
@@ -543,7 +663,13 @@ phi_mu = 0.85 * mu
           </InputGroup>
 
           <InputGroup title="Reinforcement Limits">
-            <ResultRow label="Min Reinforcement" value={AstX >= 0.002 * 1000 * h ? 'Pass' : 'Fail'} status={AstX >= 0.002 * 1000 * h ? 'pass' : 'fail'} />
+            <ResultRow 
+              label="Min Reinforcement" 
+              value={`${AstX.toFixed(0)} / ${minAst.toFixed(0)}`} 
+              unit="mm2/m" 
+              status={isMinAstPass ? 'pass' : 'fail'} 
+              tooltip="Clause 9.1.1: Minimum reinforcement to control cracking and ensure ductility."
+            />
             <ResultRow label="Max Spacing (3h)" value={barSpacingX <= Math.min(3 * h, 500) ? 'Pass' : 'Fail'} status={barSpacingX <= Math.min(3 * h, 500) ? 'pass' : 'fail'} />
           </InputGroup>
 

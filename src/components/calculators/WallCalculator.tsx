@@ -8,7 +8,11 @@ import {
   COLUMN_END_CONDITIONS,
   SECTION_LIBRARY,
   generateWallInteractionDiagram,
-  SectionShape
+  SectionShape,
+  EXPOSURE_CLASSES,
+  FIRE_RATINGS,
+  getRequiredCover,
+  checkNCCCompliance
 } from '../../lib/as3600';
 import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
@@ -75,6 +79,10 @@ const WallCalculator: React.FC = () => {
   const [useDesignValues, setUseDesignValues] = useState(true);
 
   const [activeZone, setActiveZone] = useState<'I' | 'Mid' | 'J'>('Mid');
+
+  // NCC & Durability
+  const [exposureClass, setExposureClass] = useState('A1');
+  const [fireRating, setFireRating] = useState('60');
 
   // Validation
   const errors = useMemo(() => {
@@ -180,6 +188,14 @@ const WallCalculator: React.FC = () => {
 
   const isSafeTension = ( (1000 / Math.min(barSpacingVI, barSpacingVMid, barSpacingVJ)) * (Math.PI * Math.pow(barDiamV, 2) / 4) * (Lw / 1000) ) >= calculations.Ast_req;
   const isSafe = isSafeTension && calculations.isSafeShear;
+
+  // NCC Compliance Calculations
+  const requiredCover = getRequiredCover(exposureClass, fireRating);
+  const isDurable = 40 >= requiredCover; // Walls usually have 40mm
+  const minB = FIRE_RATINGS.find(f => f.id === fireRating)?.minB || 0;
+  const isFireSafe = tw >= minB;
+  const isStructuralSafe = isSafe;
+  const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
 
   // History Tracking
   useEffect(() => {
@@ -297,6 +313,36 @@ print(f"Tension: {T*1e-3:.2f} kN, Compression: {C*1e-3:.2f} kN")
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <InputGroup title="Design Parameters (NCC/AS)">
+              <div className="p-4 bg-gray-50 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Exposure Classification</label>
+                  <select 
+                    value={exposureClass}
+                    onChange={(e) => setExposureClass(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {EXPOSURE_CLASSES.map(ec => (
+                      <option key={ec.id} value={ec.id}>{ec.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Fire Resistance Period (FRP)</label>
+                  <select 
+                    value={fireRating}
+                    onChange={(e) => setFireRating(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {FIRE_RATINGS.map(fr => (
+                      <option key={fr.id} value={fr.id}>{fr.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <InputField label="Concrete Cover" value={40} onChange={() => {}} unit="mm" description="Fixed for walls" />
+              </div>
+            </InputGroup>
+
             <InputGroup title="Geometry & Support">
               <div className="p-4 bg-gray-50 space-y-2 border-b border-line">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Section Shape</label>
@@ -538,6 +584,47 @@ print(f"Tension: {T*1e-3:.2f} kN, Compression: {C*1e-3:.2f} kN")
         </div>
 
         <div className="space-y-8">
+          <InputGroup title="NCC Compliance & Durability">
+            <div className="p-4 bg-white space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-line">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className={cn("w-5 h-5", isNCCCompliant ? "text-green-600" : "text-red-600")} />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest">NCC Compliance Status</p>
+                    <p className="text-[8px] font-mono opacity-40">Performance Requirements B1.1 & B1.2</p>
+                  </div>
+                </div>
+                <span className={cn(
+                  "px-3 py-1 text-[10px] font-bold font-mono uppercase border-2",
+                  isNCCCompliant ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                )}>
+                  {isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <ResultRow 
+                  label="Structural Safety" 
+                  value={isStructuralSafe ? 'PASS' : 'FAIL'} 
+                  status={isStructuralSafe ? 'pass' : 'fail'} 
+                  tooltip="AS 1170 & AS 3600 Strength Requirements"
+                />
+                <ResultRow 
+                  label="Fire Resistance" 
+                  value={isFireSafe ? 'PASS' : 'FAIL'} 
+                  status={isFireSafe ? 'pass' : 'fail'} 
+                  tooltip={`Min thickness for ${fireRating}min FRP is ${minB}mm`}
+                />
+                <ResultRow 
+                  label="Durability (Cover)" 
+                  value={isDurable ? 'PASS' : 'FAIL'} 
+                  status={isDurable ? 'pass' : 'fail'} 
+                  tooltip={`Required cover for ${exposureClass} is ${requiredCover}mm`}
+                />
+              </div>
+            </div>
+          </InputGroup>
+
           <InputGroup title="C&T Analysis">
             <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
               <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Compression & Tension</p>

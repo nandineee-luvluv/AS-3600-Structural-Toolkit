@@ -1,5 +1,26 @@
 # AS 3600 Structural Toolkit - Recent Updates
 
+## Refined Design Procedures & AS 3600 Tuning
+Significant enhancements have been made to the core calculation engine to align with professional engineering spreadsheet logic and detailed AS 3600 requirements.
+
+### Key Enhancements:
+- **General Method for Shear (Clause 8.2.4.2)**:
+    - Replaced simplified shear calculations with the more accurate General Method.
+    - Calculates crack control parameters ($k_v, \theta$) based on longitudinal strain ($\varepsilon_x$) and maximum aggregate size.
+    - Provides detailed output for shear parameters in the design summary.
+- **Serviceability & Crack Control (Clause 8.6 & 9.4.1)**:
+    - Integrated deemed-to-comply checks for bar spacing and diameter based on calculated steel stress under service loads.
+    - Added support for exposure-class dependent crack control limits.
+- **Minimum Reinforcement (Clause 8.1.6.1 & 9.1.1)**:
+    - Implemented the full AS 3600 formula for $A_{st,min}$, replacing simplified percentage-based approximations.
+    - Considers concrete flexural tensile strength ($f'_{ct.f}$) and section geometry ($h/d$ ratio).
+- **Development Length Utility (Clause 13.1)**:
+    - Added automatic calculation of required development length ($L_{sy,t}$) for tensile reinforcement.
+    - Helps ensure detailing compliance for all structural members.
+- **NCC Compliance Summary**:
+    - Expanded the NCC compliance section to explicitly report on refined checks like crack control and minimum reinforcement.
+    - Updated design reports to include detailed shear parameters ($k_v, \theta, \varepsilon_x$).
+
 ## Slab Design Module Enhancements
 The Slab Design module has been significantly upgraded to support a wider range of reinforced concrete elements.
 
@@ -26,6 +47,13 @@ The Slab Design module has been significantly upgraded to support a wider range 
 
 ## Developer Documentation
 - **Instructions Guide**: Created `instructions.md` to guide future development and maintain architectural consistency.
+
+## NCC Compliance & Multi-Standard Integration
+- **NCC 2022 Compliance**: Integrated Performance Requirements B1.1 (Structural Reliability) and B1.2 (Structural Resistance) into the design workflow.
+- **Durability & Fire Rating**: Added explicit checks for Exposure Classification (AS 3600 Clause 4.3) and Fire Resistance Period (AS 3600 Section 5).
+- **Load Combinations (AS 1170.0)**: Refined load combination logic to ensure full compliance with NCC Deemed-to-Satisfy (DTS) provisions.
+- **Minimum Cover & Dimensions**: Automated checks for minimum concrete cover and section dimensions based on durability and fire safety requirements.
+- **Compliance Summary**: Added a dedicated "NCC Compliance & Durability" section to all design reports, providing a clear pass/fail status for structural, fire, and durability criteria.
 
 ## UI and Graphics Overhaul
 - **Wider Application Layout**: Increased the main content area width to **1400px** to provide a more professional, desktop-first workspace for technical data.

@@ -3,13 +3,20 @@ import { InputGroup, InputField, ResultRow } from '../ui/InputGrid';
 import { SectionLibraryManager } from '../SectionLibraryManager';
 import { 
   calculateFlexuralCapacity, 
-  calculateShearCapacity, 
+  calculateShearGeneralMethod, 
   calculateRequiredBeamReinforcement, 
   calculateSeismicDetailing, 
+  getMinimumReinforcement,
+  checkCrackControl,
+  calculateDevelopmentLength,
   validateInput, 
   BEAM_END_CONDITIONS,
   SectionShape,
-  REINFORCEMENT_TYPES
+  REINFORCEMENT_TYPES,
+  EXPOSURE_CLASSES,
+  FIRE_RATINGS,
+  getRequiredCover,
+  checkNCCCompliance
 } from '../../lib/as3600';
 import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
@@ -79,6 +86,10 @@ const BeamCalculator: React.FC = () => {
   const [vStarMid, setVStarMid] = useState(0);
 
   const [activeZone, setActiveZone] = useState<'I' | 'Mid' | 'J'>('Mid');
+
+  // NCC & Durability
+  const [exposureClass, setExposureClass] = useState('A1');
+  const [fireRating, setFireRating] = useState('60');
 
   // Auto-calculate loads when inputs change
   useEffect(() => {
@@ -168,16 +179,47 @@ const BeamCalculator: React.FC = () => {
   }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstJ, AscJ, dc, fc, fsy]);
 
   const shearI = useMemo(() => {
-    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstI }, { fc, fsy, Es: 200000 }, Asv, shearSpacingI);
-  }, [effectiveB, d, h, AstI, fc, fsy, Asv, shearSpacingI]);
+    return calculateShearGeneralMethod(
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstI }, 
+      { fc, fsy, Es: 200000 }, 
+      { M_star: mStarI, V_star: vStarEnd },
+      Asv, 
+      shearSpacingI
+    );
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstI, fc, fsy, mStarI, vStarEnd, Asv, shearSpacingI]);
 
   const shearMid = useMemo(() => {
-    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstMid }, { fc, fsy, Es: 200000 }, Asv, shearSpacingMid);
-  }, [effectiveB, d, h, AstMid, fc, fsy, Asv, shearSpacingMid]);
+    return calculateShearGeneralMethod(
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstMid }, 
+      { fc, fsy, Es: 200000 }, 
+      { M_star: mStarMid, V_star: vStarMid },
+      Asv, 
+      shearSpacingMid
+    );
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstMid, fc, fsy, mStarMid, vStarMid, Asv, shearSpacingMid]);
 
   const shearJ = useMemo(() => {
-    return calculateShearCapacity({ b: effectiveB, d, h, Ast: AstJ }, { fc, fsy, Es: 200000 }, Asv, shearSpacingJ);
-  }, [effectiveB, d, h, AstJ, fc, fsy, Asv, shearSpacingJ]);
+    return calculateShearGeneralMethod(
+      { shape, b, bf, tf, tw, b_top, b_bottom, d, h, Ast: AstJ }, 
+      { fc, fsy, Es: 200000 }, 
+      { M_star: mStarJ, V_star: vStarEnd },
+      Asv, 
+      shearSpacingJ
+    );
+  }, [shape, b, bf, tf, tw, b_top, b_bottom, d, h, AstJ, fc, fsy, mStarJ, vStarEnd, Asv, shearSpacingJ]);
+
+  // Refined Checks
+  const minAst = getMinimumReinforcement(effectiveB, h, fc, fsy);
+  const isMinAstPass = AstMid >= minAst;
+
+  const crackControl = useMemo(() => {
+    // Simplified steel stress calculation (sigma_s = M* / (Ast * z))
+    const z = 0.9 * d;
+    const sigma_s = (Math.abs(mStarMid) * 1e6) / (AstMid * z);
+    return checkCrackControl(barDiam, 1000 / nBarsMid, sigma_s, exposureClass);
+  }, [mStarMid, AstMid, d, barDiam, nBarsMid, exposureClass]);
+
+  const devLength = calculateDevelopmentLength(barDiam, fsy, fc);
 
   const flexureStatusI = flexureI.phiMu >= Math.abs(mStarI) ? 'pass' : 'fail';
   const flexureStatusMid = flexureMid.phiMu >= Math.abs(mStarMid) ? 'pass' : 'fail';
@@ -186,6 +228,15 @@ const BeamCalculator: React.FC = () => {
   const shearStatusI = shearI.phiVu >= vStarEnd ? 'pass' : 'fail';
   const shearStatusMid = shearMid.phiVu >= vStarMid ? 'pass' : 'fail';
   const shearStatusJ = shearJ.phiVu >= vStarEnd ? 'pass' : 'fail';
+
+  // NCC Compliance Calculations
+  const requiredCover = getRequiredCover(exposureClass, fireRating);
+  const isDurable = cover >= requiredCover;
+  const minB = FIRE_RATINGS.find(f => f.id === fireRating)?.minB || 0;
+  const isFireSafe = b >= minB;
+  const isStructuralSafe = flexureStatusI === 'pass' && flexureStatusMid === 'pass' && flexureStatusJ === 'pass' && 
+                           shearStatusI === 'pass' && shearStatusMid === 'pass' && shearStatusJ === 'pass';
+  const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
 
   // Lock compression bars to 0 if singly reinforced
   useEffect(() => {
@@ -231,6 +282,28 @@ const BeamCalculator: React.FC = () => {
       status: flexureStatusMid,
       clause: '8.1.3',
       equation: `\\phi M_u = ${flexureMid.phi.toFixed(2)} \\cdot A_{st} f_{sy} (d - \\gamma k_u d / 2)`
+    },
+    {
+      label: 'Min Reinforcement',
+      value: minAst.toFixed(0),
+      unit: 'mm2',
+      status: isMinAstPass ? 'pass' : 'fail',
+      clause: '8.1.6.1',
+      equation: 'A_{st,min} = 0.2 (h/d)^2 (f\'_{ct.f}/f_{sy}) b d'
+    },
+    {
+      label: 'Crack Control',
+      value: crackControl.isSafe ? 'PASS' : 'FAIL',
+      status: crackControl.isSafe ? 'pass' : 'fail',
+      clause: '8.6.2',
+      description: `Max spacing: ${crackControl.maxSpacing}mm, Max bar: ${crackControl.maxBarDiam}mm`
+    },
+    {
+      label: 'Dev. Length (Lsy.t)',
+      value: devLength.toFixed(0),
+      unit: 'mm',
+      status: 'info',
+      clause: '13.1.2'
     },
     { 
       label: 'Neutral Axis Mid (ku)', 
@@ -383,7 +456,36 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                   ))}
                 </select>
               </div>
-              <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+            </InputGroup>
+
+            <InputGroup title="Design Parameters (NCC/AS)">
+              <div className="p-4 bg-gray-50 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Exposure Classification</label>
+                  <select 
+                    value={exposureClass}
+                    onChange={(e) => setExposureClass(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {EXPOSURE_CLASSES.map(ec => (
+                      <option key={ec.id} value={ec.id}>{ec.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Fire Resistance Period (FRP)</label>
+                  <select 
+                    value={fireRating}
+                    onChange={(e) => setFireRating(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {FIRE_RATINGS.map(fr => (
+                      <option key={fr.id} value={fr.id}>{fr.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+              </div>
             </InputGroup>
 
             <InputGroup title="Reinforcement Details">
@@ -544,6 +646,72 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
             </div>
           )}
 
+          <InputGroup title="NCC Compliance & Durability">
+            <div className="p-4 bg-white space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-line">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className={cn("w-5 h-5", isNCCCompliant ? "text-green-600" : "text-red-600")} />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest">NCC Compliance Status</p>
+                    <p className="text-[8px] font-mono opacity-40">Performance Requirements B1.1 & B1.2</p>
+                  </div>
+                </div>
+                <span className={cn(
+                  "px-3 py-1 text-[10px] font-bold font-mono uppercase border-2",
+                  isNCCCompliant ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                )}>
+                  {isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <ResultRow 
+                  label="Structural Safety" 
+                  value={isStructuralSafe ? 'PASS' : 'FAIL'} 
+                  status={isStructuralSafe ? 'pass' : 'fail'} 
+                  tooltip="AS 1170 & AS 3600 Strength Requirements"
+                />
+                <ResultRow 
+                  label="Fire Resistance" 
+                  value={isFireSafe ? 'PASS' : 'FAIL'} 
+                  status={isFireSafe ? 'pass' : 'fail'} 
+                  tooltip={`Min width for ${fireRating}min FRP is ${minB}mm`}
+                />
+                <ResultRow 
+                  label="Durability (Cover)" 
+                  value={isDurable ? 'PASS' : 'FAIL'} 
+                  status={isDurable ? 'pass' : 'fail'} 
+                  tooltip={`Required cover for ${exposureClass} is ${requiredCover}mm`}
+                />
+              </div>
+            </div>
+          </InputGroup>
+
+          <InputGroup title="Refined Design Checks">
+            <div className="p-4 bg-white space-y-4">
+              <ResultRow 
+                label="Min Reinforcement" 
+                value={`${AstMid.toFixed(0)} / ${minAst.toFixed(0)}`} 
+                unit="mm2" 
+                status={isMinAstPass ? 'pass' : 'fail'} 
+                tooltip="Clause 8.1.6.1: Minimum tensile reinforcement to prevent brittle failure."
+              />
+              <ResultRow 
+                label="Crack Control" 
+                value={crackControl.isSafe ? 'PASS' : 'FAIL'} 
+                status={crackControl.isSafe ? 'pass' : 'fail'} 
+                tooltip={`Clause 8.6.2: Max spacing ${crackControl.maxSpacing}mm, Max bar ${crackControl.maxBarDiam}mm`}
+              />
+              <ResultRow 
+                label="Development Length" 
+                value={devLength.toFixed(0)} 
+                unit="mm" 
+                status="info" 
+                tooltip="Clause 13.1.2: Minimum length to develop full yield strength of rebar."
+              />
+            </div>
+          </InputGroup>
+
           <InputGroup title="Design Summary (By Zone)">
             <div className="space-y-6">
               <div className="p-4 bg-gray-50 border-b border-line">
@@ -552,6 +720,11 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                 <ResultRow label="Capacity φMu" value={flexureI.phiMu.toFixed(1)} unit="kNm" status={flexureStatusI} />
                 <ResultRow label="Shear V*" value={vStarEnd.toFixed(1)} unit="kN" />
                 <ResultRow label="Capacity φVu" value={shearI.phiVu.toFixed(1)} unit="kN" status={shearStatusI} />
+                <div className="mt-2 grid grid-cols-3 gap-1 text-[8px] font-mono opacity-40">
+                  <span>kv: {shearI.kv.toFixed(3)}</span>
+                  <span>θ: {shearI.theta.toFixed(1)}°</span>
+                  <span>εx: {(shearI.epsilon_x * 1000).toFixed(3)}e-3</span>
+                </div>
               </div>
               <div className="p-4 bg-gray-50 border-b border-line">
                 <p className="text-[8px] font-mono uppercase opacity-40 mb-2">Middle (L/3)</p>
@@ -559,6 +732,11 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                 <ResultRow label="Capacity φMu" value={flexureMid.phiMu.toFixed(1)} unit="kNm" status={flexureStatusMid} />
                 <ResultRow label="Shear V*" value={vStarMid.toFixed(1)} unit="kN" />
                 <ResultRow label="Capacity φVu" value={shearMid.phiVu.toFixed(1)} unit="kN" status={shearStatusMid} />
+                <div className="mt-2 grid grid-cols-3 gap-1 text-[8px] font-mono opacity-40">
+                  <span>kv: {shearMid.kv.toFixed(3)}</span>
+                  <span>θ: {shearMid.theta.toFixed(1)}°</span>
+                  <span>εx: {(shearMid.epsilon_x * 1000).toFixed(3)}e-3</span>
+                </div>
               </div>
               <div className="p-4 bg-gray-50">
                 <p className="text-[8px] font-mono uppercase opacity-40 mb-2">J-End (L/3)</p>
@@ -566,6 +744,11 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                 <ResultRow label="Capacity φMu" value={flexureJ.phiMu.toFixed(1)} unit="kNm" status={flexureStatusJ} />
                 <ResultRow label="Shear V*" value={vStarEnd.toFixed(1)} unit="kN" />
                 <ResultRow label="Capacity φVu" value={shearJ.phiVu.toFixed(1)} unit="kN" status={shearStatusJ} />
+                <div className="mt-2 grid grid-cols-3 gap-1 text-[8px] font-mono opacity-40">
+                  <span>kv: {shearJ.kv.toFixed(3)}</span>
+                  <span>θ: {shearJ.theta.toFixed(1)}°</span>
+                  <span>εx: {(shearJ.epsilon_x * 1000).toFixed(3)}e-3</span>
+                </div>
               </div>
             </div>
           </InputGroup>

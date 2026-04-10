@@ -5,12 +5,17 @@ import {
   calculateColumnBiaxial, 
   calculateSeismicDetailing, 
   calculateShearCapacity,
+  calculateDevelopmentLength,
   validateInput, 
   COLUMN_END_CONDITIONS,
   SECTION_LIBRARY,
   generateColumnInteractionDiagram,
   SectionShape,
-  REINFORCEMENT_TYPES
+  REINFORCEMENT_TYPES,
+  EXPOSURE_CLASSES,
+  FIRE_RATINGS,
+  getRequiredCover,
+  checkNCCCompliance
 } from '../../lib/as3600';
 import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
@@ -90,6 +95,10 @@ const ColumnCalculator: React.FC = () => {
 
   const [activeZone, setActiveZone] = useState<'I' | 'Mid' | 'J'>('Mid');
 
+  // NCC & Durability
+  const [exposureClass, setExposureClass] = useState('A1');
+  const [fireRating, setFireRating] = useState('60');
+
   const handleSectionSelect = (section: any) => {
     setShape(section.shape || 'rectangular');
     if (section.b) setB(section.b);
@@ -155,12 +164,24 @@ const ColumnCalculator: React.FC = () => {
     return calculateShearCapacity({ b, d: d_eff, h: Math.min(b, h), Ast: Ast / 2 }, { fc, fsy, Es: 200000 }, 2 * (Math.PI * Math.pow(stirrupDiam, 2)) / 4, stirrupSpacingJ);
   }, [b, h, cover, barDiam, stirrupDiam, stirrupSpacingJ, fc, fsy, Ast]);
 
+  const isSafe = capacity.isSafe;
+
+  // NCC Compliance Calculations
+  const requiredCover = getRequiredCover(exposureClass, fireRating);
+  const isDurable = cover >= requiredCover;
+  const minB = FIRE_RATINGS.find(f => f.id === fireRating)?.minB || 0;
+  const isFireSafe = b >= minB && h >= minB;
+  const isStructuralSafe = isSafe && shearI.phiVu >= vStar && shearMid.phiVu >= vStar && shearJ.phiVu >= vStar;
+  const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
+
+  const devLength = calculateDevelopmentLength(barDiam, fsy, fc);
+  const minAst = 0.01 * Ag;
+  const isMinAstPass = Ast >= minAst;
+
   const seismic = useMemo(() => {
     const d_eff = Math.min(b, h) - cover - stirrupDiam - barDiam / 2;
     return calculateSeismicDetailing('column', { b, h, d: d_eff, db: barDiam, ds: stirrupDiam, s: stirrupSpacingMid, fc });
   }, [b, h, cover, barDiam, stirrupDiam, stirrupSpacingMid, fc]);
-
-  const isSafe = capacity.isSafe;
 
   // History Tracking
   useEffect(() => {
@@ -193,6 +214,21 @@ const ColumnCalculator: React.FC = () => {
       status: isSafe ? 'pass' : 'fail',
       clause: '10.6.2',
       equation: '\\phi N_{uo} = \\phi [\\alpha_1 f\'_c (A_g - A_{sc}) + f_{sy} A_{sc}]'
+    },
+    {
+      label: 'Min Reinforcement',
+      value: minAst.toFixed(0),
+      unit: 'mm2',
+      status: isMinAstPass ? 'pass' : 'fail',
+      clause: '10.7.1',
+      equation: 'A_{st,min} = 0.01 A_g'
+    },
+    {
+      label: 'Dev. Length (Lsy.t)',
+      value: devLength.toFixed(0),
+      unit: 'mm',
+      status: 'info',
+      clause: '13.1.2'
     },
     { 
       label: 'Biaxial Ratio', 
@@ -342,7 +378,36 @@ print(f"Max Axial Capacity: {phiNu_max:.2f} kN")
                   ))}
                 </select>
               </div>
-              <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+            </InputGroup>
+
+            <InputGroup title="Design Parameters (NCC/AS)">
+              <div className="p-4 bg-gray-50 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Exposure Classification</label>
+                  <select 
+                    value={exposureClass}
+                    onChange={(e) => setExposureClass(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {EXPOSURE_CLASSES.map(ec => (
+                      <option key={ec.id} value={ec.id}>{ec.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Fire Resistance Period (FRP)</label>
+                  <select 
+                    value={fireRating}
+                    onChange={(e) => setFireRating(e.target.value)}
+                    className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                  >
+                    {FIRE_RATINGS.map(fr => (
+                      <option key={fr.id} value={fr.id}>{fr.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+              </div>
             </InputGroup>
 
             <InputGroup title="Longitudinal Reinforcement">
@@ -518,6 +583,66 @@ print(f"Max Axial Capacity: {phiNu_max:.2f} kN")
 
         {/* Results */}
         <div className="space-y-8">
+          <InputGroup title="NCC Compliance & Durability">
+            <div className="p-4 bg-white space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-line">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className={cn("w-5 h-5", isNCCCompliant ? "text-green-600" : "text-red-600")} />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest">NCC Compliance Status</p>
+                    <p className="text-[8px] font-mono opacity-40">Performance Requirements B1.1 & B1.2</p>
+                  </div>
+                </div>
+                <span className={cn(
+                  "px-3 py-1 text-[10px] font-bold font-mono uppercase border-2",
+                  isNCCCompliant ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                )}>
+                  {isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <ResultRow 
+                  label="Structural Safety" 
+                  value={isStructuralSafe ? 'PASS' : 'FAIL'} 
+                  status={isStructuralSafe ? 'pass' : 'fail'} 
+                  tooltip="AS 1170 & AS 3600 Strength Requirements"
+                />
+                <ResultRow 
+                  label="Fire Resistance" 
+                  value={isFireSafe ? 'PASS' : 'FAIL'} 
+                  status={isFireSafe ? 'pass' : 'fail'} 
+                  tooltip={`Min dimension for ${fireRating}min FRP is ${minB}mm`}
+                />
+                <ResultRow 
+                  label="Durability (Cover)" 
+                  value={isDurable ? 'PASS' : 'FAIL'} 
+                  status={isDurable ? 'pass' : 'fail'} 
+                  tooltip={`Required cover for ${exposureClass} is ${requiredCover}mm`}
+                />
+              </div>
+            </div>
+          </InputGroup>
+
+          <InputGroup title="Refined Design Checks">
+            <div className="p-4 bg-white space-y-4">
+              <ResultRow 
+                label="Min Reinforcement" 
+                value={`${Ast.toFixed(0)} / ${minAst.toFixed(0)}`} 
+                unit="mm2" 
+                status={isMinAstPass ? 'pass' : 'fail'} 
+                tooltip="Clause 10.7.1: Minimum vertical reinforcement for columns (1% of Ag)."
+              />
+              <ResultRow 
+                label="Development Length" 
+                value={devLength.toFixed(0)} 
+                unit="mm" 
+                status="info" 
+                tooltip="Clause 13.1.2: Minimum length to develop full yield strength of rebar."
+              />
+            </div>
+          </InputGroup>
+
           <InputGroup title="Axial & Moment Capacity">
             <div className="p-4 bg-gray-50 border-b border-line space-y-2">
               <div className="flex items-center justify-between">

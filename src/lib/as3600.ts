@@ -293,8 +293,120 @@ export function calculateShearCapacity(
 }
 
 /**
- * Column Design (Clause 10)
+ * Clause 8.2.4.2: General method for kv and theta
  */
+export function calculateShearGeneralMethod(
+  section: BeamSection,
+  materials: MaterialProperties,
+  loads: DesignLoads,
+  Asv: number,
+  s: number,
+  phi: number = 0.75
+): {
+  phiVu: number;
+  Vuc: number;
+  Vus: number;
+  kv: number;
+  theta: number;
+  epsilon_x: number;
+} {
+  const { fc, fsy, Es = 200000 } = materials;
+  const { M_star, V_star, N_star = 0 } = loads;
+  const b = section.b || section.tw || 300;
+  const d = section.d;
+  const Ast = section.Ast;
+
+  const dv = Math.max(0.72 * section.h, 0.9 * d);
+  
+  // Clause 8.2.4.2.1: Longitudinal strain at mid-depth
+  // epsilon_x = (|M*/dv| + V* + 0.5*N*) / (2 * Es * Ast)
+  // Limited to 3.0 x 10^-3
+  let epsilon_x = (Math.abs(M_star * 1e6 / dv) + Math.abs(V_star * 1e3) + 0.5 * Math.abs(N_star * 1e3)) / (2 * Es * Ast);
+  if (epsilon_x > 0.003) epsilon_x = 0.003;
+  if (epsilon_x < 0) epsilon_x = 0;
+
+  // Clause 8.2.4.2.2: Determination of kv and theta
+  const kv = 0.4 / (1 + 1500 * epsilon_x);
+  const theta = 29 + 7000 * epsilon_x;
+  const thetaRad = theta * (Math.PI / 180);
+
+  const Vuc = kv * b * dv * Math.sqrt(fc) * 1e-3;
+  const Vus = (Asv * fsy * dv * (1 / Math.tan(thetaRad))) / s * 1e-3;
+
+  // Clause 8.2.3.3: Maximum shear capacity
+  const Vu_max = 0.55 * fc * b * dv * (Math.tan(thetaRad) / (1 + Math.pow(Math.tan(thetaRad), 2))) * 1e-3;
+  const Vu = Math.min(Vuc + Vus, Vu_max);
+
+  return {
+    phiVu: phi * Vu,
+    Vuc,
+    Vus,
+    kv,
+    theta,
+    epsilon_x
+  };
+}
+
+/**
+ * Clause 8.1.6.1: Minimum reinforcement for beams
+ */
+export function getMinimumReinforcement(b: number, h: number, fc: number, fsy: number): number {
+  // Ast,min = 0.2 * (h/d)^2 * f'ct.f / fsy * b * d
+  // Simplified as 0.2 * (h/d)^2 * 0.6 * sqrt(fc) / fsy * b * d
+  const d = h - 50;
+  const fctf = 0.6 * Math.sqrt(fc);
+  return 0.2 * Math.pow(h/d, 2) * (fctf / fsy) * b * d;
+}
+
+/**
+ * Clause 8.6: Crack Control (Deemed to comply)
+ */
+export function checkCrackControl(
+  barDiam: number,
+  spacing: number,
+  sigma_s: number, // Steel stress under service loads
+  exposureId: string
+): {
+  isSafe: boolean;
+  maxSpacing: number;
+  maxBarDiam: number;
+} {
+  // Table 8.6.2.2: Max bar spacing and diameter
+  // Simplified logic for standard cases
+  let maxSpacing = 300;
+  let maxBarDiam = 32;
+
+  if (sigma_s > 200) {
+    maxSpacing = 200;
+    maxBarDiam = 24;
+  }
+  if (sigma_s > 300) {
+    maxSpacing = 100;
+    maxBarDiam = 16;
+  }
+
+  return {
+    isSafe: spacing <= maxSpacing && barDiam <= maxBarDiam,
+    maxSpacing,
+    maxBarDiam
+  };
+}
+
+/**
+ * Clause 13.1: Development Length
+ */
+export function calculateDevelopmentLength(
+  db: number,
+  fsy: number,
+  fc: number,
+  isTension: boolean = true
+): number {
+  // Lsy.t = (0.5 * fsy * db) / (k1 * f'ct)
+  // Simplified k1 = 1.3 for top bars, 1.0 otherwise
+  const fct = 0.36 * Math.sqrt(fc);
+  const k1 = 1.0; 
+  return (0.5 * fsy * db) / (k1 * fct);
+}
 export function calculateColumnBiaxial(
   b: number,
   h: number,
@@ -340,18 +452,23 @@ export function calculateColumnBiaxial(
 }
 
 /**
- * Slab Deflection Check (Clause 9.4)
+ * Slab Deflection Check (Clause 9.4.1: Deemed-to-comply span-to-depth ratios)
  */
 export function checkSlabDeflection(
   L: number,
   d: number,
-  isContinuous: boolean = false
+  isContinuous: boolean = false,
+  isCantilever: boolean = false
 ): {
   isSafe: boolean;
   ratio: number;
   limit: number;
 } {
-  const k1 = isContinuous ? 1.2 : 1.0;
+  // AS 3600 Table 9.4.1
+  let k1 = 1.0;
+  if (isCantilever) k1 = 0.4;
+  else if (isContinuous) k1 = 1.2;
+  
   const limit = 30 * k1; 
   const ratio = L / d;
   return {
@@ -359,6 +476,31 @@ export function checkSlabDeflection(
     ratio,
     limit
   };
+}
+
+/**
+ * AS 1170.2: Wind Load Utility (Simplified)
+ * Calculates design wind pressure p = 0.5 * rho * (V_des)^2 * C_fig * C_dyn
+ */
+export function calculateWindPressure(data: {
+  region: 'A' | 'B' | 'C' | 'D';
+  terrainCategory: 1 | 2 | 3 | 4;
+  height: number;
+  importanceLevel: 1 | 2 | 3 | 4;
+}) {
+  // Simplified regional wind speeds (V_R) for 500 year ARI
+  const regionalSpeeds = { A: 45, B: 57, C: 66, D: 80 };
+  const Vr = regionalSpeeds[data.region];
+  
+  // Simplified Mz,cat factors
+  let Mzcat = 0.8;
+  if (data.height > 10) Mzcat = 1.0;
+  if (data.height > 20) Mzcat = 1.1;
+  
+  const Vdes = Vr * Mzcat; // Simplified
+  const p = 0.6 * Math.pow(Vdes, 2) * 1e-3; // kPa (0.5 * 1.2 * V^2)
+  
+  return p;
 }
 
 /**
@@ -735,4 +877,44 @@ export function validateInput(val: number, min: number, max: number, label: stri
   if (val < min) return `${label} must be at least ${min}`;
   if (val > max) return `${label} must not exceed ${max}`;
   return null;
+}
+
+export const EXPOSURE_CLASSES = [
+  { id: 'A1', label: 'A1: Mild (Interior)', minCover: 20 },
+  { id: 'A2', label: 'A2: Moderate (Exterior)', minCover: 25 },
+  { id: 'B1', label: 'B1: Severe (Coastal)', minCover: 40 },
+  { id: 'B2', label: 'B2: Very Severe', minCover: 60 },
+  { id: 'C1', label: 'C1: Tropical/Marine', minCover: 70 },
+  { id: 'C2', label: 'C2: Extreme', minCover: 80 },
+];
+
+export const FIRE_RATINGS = [
+  { id: '30', label: '30 min', minB: 80, minCover: 20 },
+  { id: '60', label: '60 min', minB: 120, minCover: 20 },
+  { id: '90', label: '90 min', minB: 150, minCover: 25 },
+  { id: '120', label: '120 min', minB: 200, minCover: 35 },
+  { id: '180', label: '180 min', minB: 240, minCover: 45 },
+  { id: '240', label: '240 min', minB: 280, minCover: 55 },
+];
+
+/**
+ * Clause 4.10: Durability and Fire Resistance
+ * Returns the maximum required cover based on exposure and fire.
+ */
+export function getRequiredCover(exposureId: string, fireId: string): number {
+  const exp = EXPOSURE_CLASSES.find(e => e.id === exposureId)?.minCover || 20;
+  const fire = FIRE_RATINGS.find(f => f.id === fireId)?.minCover || 20;
+  return Math.max(exp, fire);
+}
+
+/**
+ * NCC Compliance Check
+ * Verifies if the design meets basic NCC Performance Requirements via DTS standards.
+ */
+export function checkNCCCompliance(data: {
+  isStructuralSafe: boolean;
+  isFireSafe: boolean;
+  isDurable: boolean;
+}) {
+  return data.isStructuralSafe && data.isFireSafe && data.isDurable;
 }

@@ -28,6 +28,19 @@ This toolkit is a specialized structural engineering application based on the **
 - **Columns/Walls**: Shear design is performed at three zones. End-zone lengths are configurable.
 - **Calculations**: Use `calculateShearCapacity` and `calculateFlexuralCapacity` for each zone independently.
 
+### 5. NCC Compliance & Refined Design
+- **Standards**: The toolkit integrates AS 3600 (Concrete), AS 1170 (Loads), and NCC 2022 requirements.
+- **Refined Procedures**:
+    - **Shear**: Uses the General Method (Clause 8.2.4.2) for beams, considering strain compatibility.
+    - **Crack Control**: Deemed-to-comply checks for bar spacing and diameter (Clause 8.6).
+    - **Min Reinforcement**: Accurate $A_{st,min}$ calculation based on $f'_{ct.f}$.
+    - **Detailing**: Automatic calculation of development lengths ($L_{sy,t}$).
+- **Compliance Logic**: Every calculator must perform a three-pillar compliance check:
+    1. **Structural Safety**: Strength checks against factored loads.
+    2. **Fire Resistance**: Minimum dimensions and cover for the specified FRP.
+    3. **Durability**: Minimum cover for the specified Exposure Classification.
+- **NCC Status**: The `checkNCCCompliance` utility in `as3600.ts` provides the final verification status.
+
 ## Development Guidelines
 - **Visual Consistency**: Always use the `brutal-card` class and `InputGroup`/`InputField` components for UI consistency.
 - **Units**: Clearly label all inputs and outputs with units.
