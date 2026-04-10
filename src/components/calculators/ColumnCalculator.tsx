@@ -17,7 +17,13 @@ import {
   getRequiredCover,
   checkNCCCompliance
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout, BoxIcon } from 'lucide-react';
+import { 
+  ProfessionalInputGroup, 
+  QuickMaterialSelector, 
+  DesignComplianceSummary 
+} from '../ui/CalculatorWrappers';
+import { DesignResultCard } from '../ui/ProfessionalComponents';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { SeismicDetailing } from '../ui/SeismicDetailing';

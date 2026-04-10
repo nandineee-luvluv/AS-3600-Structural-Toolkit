@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { InputGroup, InputField, ResultRow } from '../ui/InputGrid';
-import { Info, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, XCircle, LayersIcon } from 'lucide-react';
+import { 
+  ProfessionalInputGroup, 
+  QuickMaterialSelector, 
+  DesignComplianceSummary 
+} from '../ui/CalculatorWrappers';
+import { DesignResultCard } from '../ui/ProfessionalComponents';
 
 const FrameCalculator: React.FC = () => {
   // Geometry

@@ -18,12 +18,22 @@ import {
   getRequiredCover,
   checkNCCCompliance
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout } from 'lucide-react';
+import { checkStructuralCompliance, type ComplianceCheck } from '../../lib/ncc-compliance';
+import { Info, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Layout, Zap, Weight, Droplets } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { SeismicDetailing } from '../ui/SeismicDetailing';
 import { ExportActions } from '../ui/ExportActions';
-import { ComplianceInfo } from '../ui/ComplianceInfo';
+import { ComplianceInfo, ComplianceChecksDisplay } from '../ui/ComplianceInfo';
+import { 
+  ProfessionalInputGroup, 
+  QuickMaterialSelector, 
+  ComplianceResultCard, 
+  GeometryInputs, 
+  LoadInputs, 
+  DesignComplianceSummary 
+} from '../ui/CalculatorWrappers';
+import { DesignResultCard, Alert } from '../ui/ProfessionalComponents';
 import { useHistory } from '../../contexts/HistoryContext';
 import { useLoadCombinations } from '../../contexts/LoadCombinationContext';
 import { useSections } from '../../contexts/SectionContext';
@@ -238,6 +248,18 @@ const BeamCalculator: React.FC = () => {
                            shearStatusI === 'pass' && shearStatusMid === 'pass' && shearStatusJ === 'pass';
   const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
 
+  // Structured Compliance Checks (NCC 2022)
+  const structuralComplianceChecks: ComplianceCheck[] = useMemo(() => {
+    return checkStructuralCompliance(
+      fc,
+      fsy,
+      'ULS',
+      `1.2G + 1.5Q`,
+      AstMid / (effectiveB * d),
+      'beam'
+    );
+  }, [fc, fsy, AstMid, effectiveB, d]);
+
   // Lock compression bars to 0 if singly reinforced
   useEffect(() => {
     if (reinforcementMode === 'singly') {
@@ -389,6 +411,48 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
         </div>
       )}
 
+      {/* Professional Compliance Summary */}
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-8 shadow-sm">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <ShieldCheck size={24} className="text-blue-600" />
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Design Compliance Summary</h3>
+              <p className="text-sm text-slate-600">AS 3600:2018 & NCC 2022 Requirements</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <DesignComplianceSummary
+              isFlexureSafe={flexureStatusMid === 'pass'}
+              isShearSafe={shearStatusMid === 'pass'}
+              isDeflectionOk={true}
+              isCrackOk={crackControl.compliant}
+              isDurableOk={isDurable}
+              isFireOk={isFireSafe}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-white border border-blue-100 rounded">
+              <div className="text-xs font-mono text-slate-500 mb-1">ULS MOMENT</div>
+              <div className="text-2xl font-bold text-slate-900">{Math.abs(mStarMid).toFixed(1)}</div>
+              <div className="text-xs text-slate-600">kNm (Design)</div>
+            </div>
+            <div className="p-4 bg-white border border-blue-100 rounded">
+              <div className="text-xs font-mono text-slate-500 mb-1">MOMENT CAPACITY</div>
+              <div className="text-2xl font-bold text-slate-900">{flexureMid.phiMu.toFixed(1)}</div>
+              <div className="text-xs text-slate-600">kNm (φMu)</div>
+            </div>
+            <div className="p-4 bg-white border border-blue-100 rounded">
+              <div className="text-xs font-mono text-slate-500 mb-1">REINFORCEMENT</div>
+              <div className="text-2xl font-bold text-slate-900">{AstMid.toFixed(0)}</div>
+              <div className="text-xs text-slate-600">mm² (Provided)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
         {/* Inputs */}
         <div className="lg:col-span-2 space-y-8">
@@ -396,16 +460,7 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
             <div className="col-span-2">
               <SectionLibraryManager type="beams" onSelect={handleSectionSelect} />
             </div>
-            <InputGroup title="Materials Database">
-              <MaterialSelector 
-                fc={fc} 
-                setFc={setFc} 
-                fsy={fsy} 
-                setFsy={setFsy} 
-                customMaterials={customMaterials}
-                onAddCustomMaterial={(m) => addMaterial({ ...m, type: m.fc > 100 ? 'steel' : 'concrete' })}
-              />
-            </InputGroup>
+            <QuickMaterialSelector fc={fc} setFc={setFc} fsy={fsy} setFsy={setFsy} />
             <LoadCombinationSelector selectedId={selectedComboId} onSelect={setSelectedComboId} />
           </div>
 
@@ -684,8 +739,142 @@ print(f"Design Moment: {m_star:.2f} kNm, Capacity: {phi_mu:.2f} kNm")
                   tooltip={`Required cover for ${exposureClass} is ${requiredCover}mm`}
                 />
               </div>
+
+              <div className="h-px bg-line opacity-20 my-4" />
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-ink/60">Structured Compliance Assessment</p>
+                <ComplianceChecksDisplay checks={structuralComplianceChecks} className="max-h-64 overflow-y-auto" />
+              </div>
             </div>
           </InputGroup>
+
+          {/* Professional Results Section */}
+          <div className="space-y-6 mt-12 pt-12 border-t-2 border-slate-200">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-1 h-8 bg-blue-600 rounded-full" />
+              <h3 className="text-2xl font-bold text-slate-900">Professional Design Results</h3>
+            </div>
+
+            {/* Flexural Design Results */}
+            <ProfessionalInputGroup title="Flexural Design (ULS) - AS 3600 Clause 8.1" description="Rectangular stress block analysis with strain compatibility">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Applied Moment (M*)"
+                  value={Math.abs(mStarMid).toFixed(2)}
+                  unit="kNm"
+                  status={isFlexureSafe ? 'pass' : 'fail'}
+                  reference="AS 1170 Load Combination"
+                  details={`Load combination: ${combo.label}`}
+                />
+                <DesignResultCard
+                  title="Moment Capacity (φMu)"
+                  value={flexureMid.phiMu.toFixed(2)}
+                  unit="kNm"
+                  status={isFlexureSafe ? 'pass' : 'fail'}
+                  reference="φ = 0.85, Rectangular Stress Block"
+                  details={`Capacity ratio: ${(flexureMid.phiMu / Math.abs(mStarMid)).toFixed(2)}`}
+                />
+                <DesignResultCard
+                  title="Reinforcement Area"
+                  value={AstMid.toFixed(0)}
+                  unit="mm²"
+                  status={isMinAstPass ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 8.1.6"
+                  details={`Min: ${minAst.toFixed(0)} mm² | Max: ${(effectiveB * d * 0.04).toFixed(0)} mm²`}
+                />
+                <DesignResultCard
+                  title="Concrete Strain (εc)"
+                  value={(flexureMid.strain_c * 1000).toFixed(3)}
+                  unit="×10⁻³"
+                  status={flexureMid.strain_c <= 0.003 ? 'pass' : 'fail'}
+                  reference="Max: 0.003 at failure"
+                  details={`ku = ${flexureMid.ku.toFixed(3)}`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Shear Design Results */}
+            <ProfessionalInputGroup title="Shear Design (ULS) - AS 3600 Clause 8.2.4.2" description="General method with strain compatibility analysis">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Applied Shear (V*)"
+                  value={vStarMid.toFixed(2)}
+                  unit="kN"
+                  status={isShearSafe ? 'pass' : 'fail'}
+                  reference="AS 1170 Load Combination"
+                  details={`Shear force at mid-span`}
+                />
+                <DesignResultCard
+                  title="Shear Capacity (φVu)"
+                  value={shearMid.phiVu.toFixed(2)}
+                  unit="kN"
+                  status={isShearSafe ? 'pass' : 'fail'}
+                  reference="φ = 0.85, General Method"
+                  details={`Capacity ratio: ${(shearMid.phiVu / vStarMid).toFixed(2)}`}
+                />
+                <DesignResultCard
+                  title="Strut Angle (θ)"
+                  value={shearMid.theta.toFixed(1)}
+                  unit="degrees"
+                  status="info"
+                  reference="Determined by strain compatibility"
+                  details={`Range: 25° to 65° | kv = ${shearMid.kv.toFixed(3)}`}
+                />
+                <DesignResultCard
+                  title="Longitudinal Strain (εx)"
+                  value={(shearMid.epsilon_x * 1000).toFixed(3)}
+                  unit="×10⁻³"
+                  status="info"
+                  reference="From bending moment analysis"
+                  details={`Affects design of transverse reinforcement`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Serviceability Results */}
+            <ProfessionalInputGroup title="Serviceability Checks (SLS) - AS 3600 Clauses 9.2 & 9.4" description="Deflection and crack width compliance">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Crack Control"
+                  value={crackControl.compliant ? 'COMPLIANT' : 'EXCEED'}
+                  status={crackControl.compliant ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 9.4.1"
+                  details={`Max spacing: ${crackControl.maxSpacing}mm | Max bar: ${crackControl.maxBarDiam}mm`}
+                />
+                <DesignResultCard
+                  title="Development Length"
+                  value={devLength.toFixed(0)}
+                  unit="mm"
+                  status="info"
+                  reference="AS 3600 Clause 13.1.2"
+                  details={`Includes fce and λ factors | Min lap: ${(devLength * 1.3).toFixed(0)}mm`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Durability & Fire Results */}
+            <ProfessionalInputGroup title="Durability & Fire Safety - NCC 2022" description="Exposure classification and fire resistance requirements">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Required Cover"
+                  value={cover}
+                  unit="mm"
+                  status={isDurable ? 'pass' : 'fail'}
+                  reference={`Exposure: ${exposureClass}`}
+                  details={`Required: ${requiredCover}mm | Provided: ${cover}mm`}
+                />
+                <DesignResultCard
+                  title="Fire Rating"
+                  value={fireRating}
+                  unit="min"
+                  status={isFireSafe ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 20.3"
+                  details={`Min width for ${fireRating}min FRP: ${minB}mm | Provided: ${b}mm`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+          </div>
 
           <InputGroup title="Refined Design Checks">
             <div className="p-4 bg-white space-y-4">

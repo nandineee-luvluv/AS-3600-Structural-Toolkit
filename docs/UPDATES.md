@@ -1,5 +1,57 @@
 # AS 3600 Structural Toolkit - Recent Updates
 
+## Enhanced NCC Compliance & Structured Design Validation (April 2026)
+Major enhancement integrating structured compliance checking system with detailed NCC 2022 and AS 3600 validation.
+
+### New Modules Added:
+- **`src/lib/ncc-compliance.ts`**: Comprehensive structured compliance system
+  - `ComplianceCheck` interface for atomic compliance checks
+  - `ComplianceReport` interface for aggregated compliance assessments
+  - `checkStructuralCompliance()`: Validates concrete strength, steel grade, design method, load combinations, and reinforcement ratios
+  - `checkResidentialCompliance()`: AS 2870 compliance for residential slabs
+  - `checkBuildingClassification()`: NCC building class validation
+  - Report generation and export functions (text, JSON formats)
+  
+- **`src/lib/as3600-enhanced.ts`**: Type-safe design helper library
+  - Structured interfaces: `ConcreteProperties`, `SteelProperties`, `DesignParameters`
+  - Input structures: `BeamDesignInput`, `SlabDesignInput`, `ColumnDesignInput`
+  - 13 design helper functions including:
+    - Effective depth calculation
+    - Factored load combinations (AS 1170)
+    - Beam/slab moment and shear capacity
+    - Column interaction diagram generation
+    - Development length calculation
+    - Serviceability checks (deflection, crack width)
+
+### UI Enhancements:
+- **Enhanced ComplianceInfo Component**: New `ComplianceChecksDisplay` export
+  - Visual compliance status indicators (pass/warning/fail)
+  - Detailed check-by-check reporting
+  - Color-coded status badges
+  - Reference citations to standards
+  - Scrollable display for multiple checks
+
+### Calculator Integration:
+- **BeamCalculator**: 
+  - Integrated structured compliance checks (7-point verification)
+  - Added "Structured Compliance Assessment" section in NCC Compliance panel
+  - Displays individual check results with standard references
+  - Maintains backward compatibility with existing "Three-Pillar" system
+
+### Developer Updates:
+- Updated `instructions.md` with guidance on using new compliance and calculation modules
+- Added comprehensive type definitions for cleaner, safer code
+- Enables standardized compliance reporting across all calculators
+
+### Benefits:
+- **Transparent Validation**: Every design decision traced to specific standards
+- **Detailed Reporting**: Full compliance checks exportable for documentation
+- **Type Safety**: TypeScript interfaces reduce errors and improve IDE support
+- **Extensibility**: New standards can be added to compliance module without calculator changes
+- **Reusability**: Enhanced functions can be applied to all 6 calculator types
+
+---
+
 ## Refined Design Procedures & AS 3600 Tuning
 Significant enhancements have been made to the core calculation engine to align with professional engineering spreadsheet logic and detailed AS 3600 requirements.
 

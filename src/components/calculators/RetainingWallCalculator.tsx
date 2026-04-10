@@ -4,7 +4,13 @@ import { calculateFlexuralCapacity } from '../../lib/as3600';
 import { 
   validateInput 
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, XCircle, Pyramid } from 'lucide-react';
+import { 
+  ProfessionalInputGroup, 
+  QuickMaterialSelector, 
+  DesignComplianceSummary 
+} from '../ui/CalculatorWrappers';
+import { DesignResultCard } from '../ui/ProfessionalComponents';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { ExportActions } from '../ui/ExportActions';
