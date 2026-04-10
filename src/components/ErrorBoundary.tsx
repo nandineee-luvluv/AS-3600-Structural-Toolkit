@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Component, ReactNode } from "react";
 
@@ -12,6 +12,9 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  declare props: Props;
+  declare state: State;
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };

@@ -248,6 +248,10 @@ const BeamCalculator: React.FC = () => {
                            shearStatusI === 'pass' && shearStatusMid === 'pass' && shearStatusJ === 'pass';
   const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
 
+  // Safety check flags for professional results section
+  const isFlexureSafe = flexureStatusMid === 'pass';
+  const isShearSafe = shearStatusMid === 'pass';
+
   // Structured Compliance Checks (NCC 2022)
   const structuralComplianceChecks: ComplianceCheck[] = useMemo(() => {
     return checkStructuralCompliance(

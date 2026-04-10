@@ -18,14 +18,13 @@ import {
   getRequiredCover,
   checkNCCCompliance
 } from '../../lib/as3600';
-import { Info, AlertTriangle, CheckCircle2, Grid3x3 } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2, Grid3x3, XCircle, Layout, ShieldCheck } from 'lucide-react';
 import { 
   ProfessionalInputGroup, 
   QuickMaterialSelector, 
   DesignComplianceSummary 
 } from '../ui/CalculatorWrappers';
 import { DesignResultCard } from '../ui/ProfessionalComponents';
-import { Info, AlertTriangle, CheckCircle2, XCircle, Layout, ShieldCheck } from 'lucide-react';
 import { MaterialSelector } from '../ui/MaterialSelector';
 import { LoadCombinationSelector } from '../ui/LoadCombinationSelector';
 import { ExportActions } from '../ui/ExportActions';
