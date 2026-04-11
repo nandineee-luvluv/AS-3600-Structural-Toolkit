@@ -15,9 +15,26 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (id.includes('node_modules/katex')) return 'katex';
+            if (id.includes('node_modules/react-katex')) return 'katex';
+            if (id.includes('node_modules/recharts')) return 'recharts';
+            if (id.includes('node_modules/html2canvas')) return 'html2canvas';
+            if (id.includes('lib/exportUtils')) return 'design-export';
+            if (id.includes('ComplianceInfo')) return 'compliance';
+            if (id.includes('SeismicDetailing')) return 'seismic';
+            if (id.includes('ProfessionalComponents')) return 'professional';
+            if (id.includes('calculators')) return 'calculators';
+          }
+        }
+      }
+    },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

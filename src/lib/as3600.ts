@@ -143,6 +143,7 @@ export function calculateFlexuralCapacity(
 ): {
   phiMu: number; // kNm
   ku: number; // neutral axis parameter
+  strain_c: number; // concrete strain at extreme fibre
   isDuctile: boolean;
   isDoublyReinforced: boolean;
   phi: number;
@@ -197,10 +198,15 @@ export function calculateFlexuralCapacity(
   }
 
   const phi = phiOverride || getPhiBending(ku, materials.label?.includes('500L'));
+  
+  // Concrete strain at extreme compression fibre (AS 3600 Clause 8.1.3)
+  // In strain compatibility analysis, concrete reaches 0.003 strain at ULS
+  const strain_c = 0.003; // Fixed usable strain for rectangular stress block
 
   return {
     phiMu: phi * Mu,
     ku,
+    strain_c,
     isDuctile: ku <= 0.36,
     isDoublyReinforced: isDoubly,
     phi

@@ -41,50 +41,70 @@ export const DesignInputCard: React.FC<{
  */
 export const DesignResultCard: React.FC<{
   title: string;
-  items: Array<{
+  items?: Array<{
     label: string;
     value: string | number;
     unit?: string;
     status?: 'pass' | 'fail' | 'warning' | 'info';
     reference?: string;
   }>;
+  value?: string | number;
+  unit?: string;
+  status?: 'pass' | 'fail' | 'warning' | 'info';
+  reference?: string;
+  details?: string;
   className?: string;
-}> = ({ title, items, className }) => (
-  <div className={cn(
-    "bg-gradient-to-br from-gray-50 to-white border border-gray-300 rounded-lg",
-    className
-  )}>
-    <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
-      <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">{title}</h3>
-    </div>
-    <div className="p-6 space-y-3">
-      {items.map((item, idx) => (
-        <div key={idx} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded">
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-gray-700">{item.label}</p>
-            {item.reference && (
-              <p className="text-xs text-gray-500 font-mono">{item.reference}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-3 ml-4">
-            {item.status === 'pass' && <CheckCircle2 className="w-5 h-5 text-green-600" />}
-            {item.status === 'fail' && <AlertCircle className="w-5 h-5 text-red-600" />}
-            {item.status === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-600" />}
-            {item.status === 'info' && <Info className="w-5 h-5 text-blue-600" />}
-            <div className="text-right">
-              <p className="text-base font-bold text-gray-900">
-                {item.value}
-              </p>
-              {item.unit && (
-                <p className="text-xs text-gray-600">{item.unit}</p>
-              )}
+}> = ({ title, items, value, unit, status, reference, details, className }) => {
+  const displayItems = items || (value !== undefined ? [{
+    label: title,
+    value,
+    unit,
+    status,
+    reference
+  }] : []);
+
+  return (
+    <div className={cn(
+      "bg-gradient-to-br from-gray-50 to-white border border-gray-300 rounded-lg",
+      className
+    )}>
+      <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
+        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">{title}</h3>
+        {details && <p className="text-xs text-gray-600 mt-1">{details}</p>}
+      </div>
+      <div className="p-6 space-y-3">
+        {displayItems && displayItems.length > 0 ? displayItems.map((item, idx) => (
+          <div key={idx} className="flex flex-col gap-3 p-3 bg-white border border-gray-200 rounded">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-700 break-words">{item.label}</p>
+                {item.reference && (
+                  <p className="text-xs text-gray-500 font-mono mt-1 break-words">{item.reference}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {item.status === 'pass' && <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />}
+                {item.status === 'fail' && <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />}
+                {item.status === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />}
+                {item.status === 'info' && <Info className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 justify-between">
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900 break-words">
+                  {typeof item.value === 'number' && !isFinite(item.value) ? '—' : item.value}
+                </p>
+                {item.unit && (
+                  <p className="text-xs text-gray-600 font-mono">{item.unit}</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        )) : null}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /**
  * Compliance Status Badge

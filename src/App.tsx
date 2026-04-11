@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, lazy, Suspense, type ComponentType, type SVGProps } from 'react';
 import { 
   Calculator, 
   Layout as LayoutIcon, 
@@ -16,37 +16,44 @@ import {
   Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
-import BeamCalculator from './components/calculators/BeamCalculator';
-import ColumnCalculator from './components/calculators/ColumnCalculator';
-import SlabCalculator from './components/calculators/SlabCalculator';
-import WallCalculator from './components/calculators/WallCalculator';
-import RetainingWallCalculator from './components/calculators/RetainingWallCalculator';
-import { MaterialSettings } from './components/MaterialSettings';
-import { SectionLibraryManager } from './components/SectionLibraryManager';
 import { HistoryProvider } from './contexts/HistoryContext';
 import { LoadCombinationProvider } from './contexts/LoadCombinationContext';
 import { SectionProvider } from './contexts/SectionContext';
 import { MaterialProvider } from './contexts/MaterialContext';
-import { HistoryView } from './components/HistoryView';
+import ErrorBoundary from './components/ErrorBoundary';
 import { cn } from './lib/utils';
+
+const BeamCalculator = lazy(() => import('./components/calculators/BeamCalculator'));
+const ColumnCalculator = lazy(() => import('./components/calculators/ColumnCalculator'));
+const SlabCalculator = lazy(() => import('./components/calculators/SlabCalculator'));
+const WallCalculator = lazy(() => import('./components/calculators/WallCalculator'));
+const RetainingWallCalculator = lazy(() => import('./components/calculators/RetainingWallCalculator'));
+const MaterialSettingsComp = lazy(() => import('./components/MaterialSettings').then((mod) => ({ default: mod.MaterialSettings })));
+const SectionLibraryComp = lazy(() => import('./components/SectionLibraryManager').then((mod) => ({ default: mod.SectionLibraryManager })));
+const HistoryViewComp = lazy(() => import('./components/HistoryView').then((mod) => ({ default: mod.HistoryView })));
 
 type MemberType = 'beam' | 'column' | 'slab' | 'wall' | 'retaining-wall' | 'materials' | 'sections' | 'history';
 
+type MenuItem = {
+  id: MemberType;
+  label: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+};
+
+const menuItems: MenuItem[] = [
+  { id: 'beam', label: 'Beam Design', icon: Calculator },
+  { id: 'column', label: 'Column Design', icon: Columns },
+  { id: 'slab', label: 'Slab Design', icon: Square },
+  { id: 'wall', label: 'Shear Wall', icon: RectangleVertical },
+  { id: 'retaining-wall', label: 'Retaining Wall', icon: LayoutIcon },
+  { id: 'materials', label: 'Material Database', icon: Database },
+  { id: 'sections', label: 'Section Library', icon: Settings },
+  { id: 'history', label: 'Design History', icon: Clock },
+];
+
 function AppContent() {
   const [activeMember, setActiveMember] = useState<MemberType>('beam');
-
-  const menuItems = [
-    { id: 'beam', label: 'Beam Design', icon: Calculator },
-    { id: 'column', label: 'Column Design', icon: Columns },
-    { id: 'slab', label: 'Slab Design', icon: Square },
-    { id: 'wall', label: 'Shear Wall', icon: RectangleVertical },
-    { id: 'retaining-wall', label: 'Retaining Wall', icon: LayoutIcon },
-    { id: 'materials', label: 'Material Database', icon: Database },
-    { id: 'history', label: 'Design History', icon: Clock },
-  ];
 
   return (
     <div className="flex h-screen bg-bg text-ink font-sans overflow-hidden bg-grid">
@@ -118,13 +125,16 @@ function AppContent() {
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
             >
-              {activeMember === 'beam' && <BeamCalculator />}
-              {activeMember === 'column' && <ColumnCalculator />}
-              {activeMember === 'slab' && <SlabCalculator />}
-              {activeMember === 'wall' && <WallCalculator />}
-              {activeMember === 'retaining-wall' && <RetainingWallCalculator />}
-              {activeMember === 'materials' && <MaterialSettings onSave={(m) => console.log('Saved:', m)} />}
-              {activeMember === 'history' && <HistoryView />}
+              <Suspense fallback={<div className="rounded-xl border border-line bg-white/70 p-12 text-center text-sm text-ink/70">Loading view…</div>}>
+                {activeMember === 'beam' && <BeamCalculator />}
+                {activeMember === 'column' && <ColumnCalculator />}
+                {activeMember === 'slab' && <SlabCalculator />}
+                {activeMember === 'wall' && <WallCalculator />}
+                {activeMember === 'retaining-wall' && <RetainingWallCalculator />}
+                {activeMember === 'materials' && <MaterialSettingsComp onSave={() => {}} />}
+                {activeMember === 'sections' && <SectionLibraryComp type="beams" />}
+                {activeMember === 'history' && <HistoryViewComp />}
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -135,14 +145,16 @@ function AppContent() {
 
 export default function App() {
   return (
-    <HistoryProvider>
-      <LoadCombinationProvider>
-        <SectionProvider>
-          <MaterialProvider>
-            <AppContent />
-          </MaterialProvider>
-        </SectionProvider>
-      </LoadCombinationProvider>
-    </HistoryProvider>
+    <ErrorBoundary>
+      <HistoryProvider>
+        <LoadCombinationProvider>
+          <SectionProvider>
+            <MaterialProvider>
+              <AppContent />
+            </MaterialProvider>
+          </SectionProvider>
+        </LoadCombinationProvider>
+      </HistoryProvider>
+    </ErrorBoundary>
   );
 }
