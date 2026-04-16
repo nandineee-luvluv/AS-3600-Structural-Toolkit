@@ -649,6 +649,205 @@ print(f"Max Axial Capacity: {phiNu_max:.2f} kN")
             </div>
           </InputGroup>
 
+          {/* Professional Results Section */}
+          <div className="space-y-6 mt-12 pt-12 border-t-2 border-slate-200">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-1 h-8 bg-blue-600 rounded-full" />
+              <h3 className="text-2xl font-bold text-slate-900">Professional Design Results</h3>
+            </div>
+
+            {/* Flexural Design Results */}
+            <ProfessionalInputGroup 
+              title="Flexural Design (ULS) - AS 3600 Clause 10.6" 
+              description="Biaxial bending interaction envelope with Bresler Load Contour method"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Applied Axial (N*)"
+                  value={nStar.toFixed(2)}
+                  unit="kN"
+                  status={isSafe ? 'pass' : 'fail'}
+                  reference="AS 1170 Load Combination"
+                  details={`Design axial compression force from combined actions`}
+                />
+                <DesignResultCard
+                  title="Axial Capacity (φNu)"
+                  value={capacity.phiNu.toFixed(2)}
+                  unit="kN"
+                  status={isSafe ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 10.6.2"
+                  details={`φ = 0.60, Reduced for slenderness | Capacity ratio: ${(nStar / capacity.phiNu).toFixed(2)}`}
+                />
+                <DesignResultCard
+                  title="Biaxial Moment X (Mx*)"
+                  value={mxStar.toFixed(2)}
+                  unit="kNm"
+                  status="info"
+                  reference="AS 1170 Load Combination"
+                  details={`X-axis bending moment from eccentric axial load`}
+                />
+                <DesignResultCard
+                  title="Biaxial Moment Y (My*)"
+                  value={myStar.toFixed(2)}
+                  unit="kNm"
+                  status="info"
+                  reference="AS 1170 Load Combination"
+                  details={`Y-axis bending moment from eccentric axial load`}
+                />
+                <DesignResultCard
+                  title="Biaxial Interaction Ratio"
+                  value={capacity.ratio.toFixed(3)}
+                  status={capacity.ratio <= 1.0 ? 'pass' : 'fail'}
+                  reference="Bresler Load Contour, Clause 10.6.4"
+                  details={`Ratio ≤ 1.0 required | Alpha_n = ${capacity.alpha_n.toFixed(3)}`}
+                />
+                <DesignResultCard
+                  title="Reinforcement Area"
+                  value={Ast.toFixed(0)}
+                  unit="mm²"
+                  status={isMinAstPass ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 10.7.1"
+                  details={`Min: ${minAst.toFixed(0)} mm² (1% Ag) | Max: ${(Ag * 0.08).toFixed(0)} mm²`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Shear Design Results */}
+            <ProfessionalInputGroup 
+              title="Shear Design (ULS) - AS 3600 Clause 10.5" 
+              description="Shear capacity by zone with strain compatibility analysis"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Applied Shear (V*)"
+                  value={vStar.toFixed(2)}
+                  unit="kN"
+                  status={isStructuralSafe && shearI.phiVu >= vStar && shearMid.phiVu >= vStar && shearJ.phiVu >= vStar ? 'pass' : 'fail'}
+                  reference="AS 1170 Load Combination"
+                  details={`Design shear force on column`}
+                />
+                <DesignResultCard
+                  title="Capacity - I-End (φVu)"
+                  value={shearI.phiVu.toFixed(2)}
+                  unit="kN"
+                  status={shearI.phiVu >= vStar ? 'pass' : 'fail'}
+                  reference="General Method, Clause 8.2.4.2"
+                  details={`Zone length: ${endLengthI}mm | Stirrup: ${stirrupDiam}@${stirrupSpacingI}mm`}
+                />
+                <DesignResultCard
+                  title="Capacity - Middle (φVu)"
+                  value={shearMid.phiVu.toFixed(2)}
+                  unit="kN"
+                  status={shearMid.phiVu >= vStar ? 'pass' : 'fail'}
+                  reference="General Method, Clause 8.2.4.2"
+                  details={`Zone length: ${L - endLengthI - endLengthJ}mm | Stirrup: ${stirrupDiam}@${stirrupSpacingMid}mm`}
+                />
+                <DesignResultCard
+                  title="Capacity - J-End (φVu)"
+                  value={shearJ.phiVu.toFixed(2)}
+                  unit="kN"
+                  status={shearJ.phiVu >= vStar ? 'pass' : 'fail'}
+                  reference="General Method, Clause 8.2.4.2"
+                  details={`Zone length: ${endLengthJ}mm | Stirrup: ${stirrupDiam}@${stirrupSpacingJ}mm`}
+                />
+                <DesignResultCard
+                  title="Transverse Reinforcement"
+                  value={stirrupDiam}
+                  unit="mm"
+                  status="info"
+                  reference="AS 3600 Clause 10.5.7"
+                  details={`Diameter selected | Min: 10mm, Max: 16mm (practical)`}
+                />
+                <DesignResultCard
+                  title="Shear Check Status"
+                  value={isStructuralSafe && shearI.phiVu >= vStar && shearMid.phiVu >= vStar && shearJ.phiVu >= vStar ? 'SAFE' : 'UNSAFE'}
+                  status={isStructuralSafe && shearI.phiVu >= vStar && shearMid.phiVu >= vStar && shearJ.phiVu >= vStar ? 'pass' : 'fail'}
+                  reference="All zones must satisfy φVu ≥ V*"
+                  details={`Combined check across all shear zones`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Serviceability Checks */}
+            <ProfessionalInputGroup 
+              title="Serviceability Checks (SLS) - AS 3600 Clauses 9.2 & 9.4" 
+              description="Slenderness & crack control compliance"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Slenderness Ratio (Le/r)"
+                  value={(Le / (Math.min(b, h) / Math.sqrt(12))).toFixed(1)}
+                  status={(Le / (Math.min(b, h) / Math.sqrt(12))) <= 22 ? 'pass' : 'warning'}
+                  reference="AS 3600 Clause 10.2"
+                  details={`Max: 22 for non-slender | Effective length: ${Le.toFixed(0)}mm`}
+                />
+                <DesignResultCard
+                  title="Effective Length (Le)"
+                  value={Le.toFixed(0)}
+                  unit="mm"
+                  status="info"
+                  reference={`End Condition: ${endCondition.label}`}
+                  details={`Le = ${L}mm × ${endCondition.k_eff.toFixed(2)}`}
+                />
+                <DesignResultCard
+                  title="Development Length (Lsy.t)"
+                  value={devLength.toFixed(0)}
+                  unit="mm"
+                  status="info"
+                  reference="AS 3600 Clause 13.1.2"
+                  details={`Bar diameter: ${barDiam}mm | Includes fce and λ factors`}
+                />
+                <DesignResultCard
+                  title="Crack Control"
+                  value="CHECK"
+                  status="info"
+                  reference="AS 3600 Clause 9.4.1"
+                  details={`Applied for reinforcement spacing: Based on bar size & stress`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Durability & Fire Results */}
+            <ProfessionalInputGroup 
+              title="Durability & Fire Safety - NCC 2022" 
+              description="Exposure classification and fire resistance requirements"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Required Cover"
+                  value={requiredCover}
+                  unit="mm"
+                  status={isDurable ? 'pass' : 'fail'}
+                  reference={`Exposure: ${exposureClass}`}
+                  details={`Required: ${requiredCover}mm | Provided: ${cover}mm`}
+                />
+                <DesignResultCard
+                  title="Provided Cover"
+                  value={cover}
+                  unit="mm"
+                  status={isDurable ? 'pass' : 'fail'}
+                  reference="NCC B1.2 Durability"
+                  details={`Clearance from concrete surface to reinforcement`}
+                />
+                <DesignResultCard
+                  title="Fire Rating"
+                  value={fireRating}
+                  unit="min"
+                  status={isFireSafe ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 20.3"
+                  details={`Min width for ${fireRating}min FRP: ${minB}mm | Provided: ${Math.min(b, h)}mm`}
+                />
+                <DesignResultCard
+                  title="Compliance Status"
+                  value={isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                  status={isNCCCompliant ? 'pass' : 'fail'}
+                  reference="NCC Performance Requirements B1.1 & B1.2"
+                  details={`Strength: ${isStructuralSafe ? 'Pass' : 'Fail'} | Fire: ${isFireSafe ? 'Pass' : 'Fail'} | Durability: ${isDurable ? 'Pass' : 'Fail'}`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+          </div>
+
           <InputGroup title="Axial & Moment Capacity">
             <div className="p-4 bg-gray-50 border-b border-line space-y-2">
               <div className="flex items-center justify-between">

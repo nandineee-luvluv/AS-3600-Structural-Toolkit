@@ -631,6 +631,135 @@ print(f"Tension: {T*1e-3:.2f} kN, Compression: {C*1e-3:.2f} kN")
             </div>
           </InputGroup>
 
+          <div className="space-y-8 p-8 bg-slate-50 border border-slate-200 rounded-lg">
+            <div className="border-b border-slate-200 pb-6">
+              <h3 className="text-2xl font-bold text-slate-900">Professional Design Results</h3>
+              <p className="text-[10px] font-mono opacity-60 uppercase tracking-[0.3em] mt-2">Compression & Tension Method with Zone-based Shear Verification</p>
+            </div>
+
+            {/* C&T Results */}
+            <ProfessionalInputGroup title="Axial Force Distribution (ULS) - AS 3600 Clause 11.2" description="Compression & Tension method for combined bending and axial load">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Design Tension (T*)"
+                  value={calculations.T.toFixed(0)}
+                  unit="kN"
+                  status={calculations.T > 0 ? 'fail' : 'pass'}
+                  reference="C&T Method: z = 0.8Lw"
+                  details={`For Lw = ${Lw}mm, z = ${(0.8 * Lw).toFixed(0)}mm`}
+                />
+                <DesignResultCard
+                  title="Design Compression (C*)"
+                  value={calculations.C.toFixed(0)}
+                  unit="kN"
+                  status="pass"
+                  reference="C&T Method: C = M*/z + N*/2"
+                  details={`Load combination: ${combo.label}`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Vertical Reinforcement Check */}
+            <ProfessionalInputGroup title="Vertical Reinforcement (Tension Check)" description="Assess provided steel capacity against required tension">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Required Steel (Ast)"
+                  value={calculations.Ast_req.toFixed(0)}
+                  unit="mm²"
+                  status={isSafeTension ? 'pass' : 'fail'}
+                  reference="φ = 0.85, Ast = T / (0.85 × fsy)"
+                  details={`Spacing min = ${Math.min(barSpacingVI, barSpacingVMid, barSpacingVJ)}mm`}
+                />
+                <DesignResultCard
+                  title="Provided Steel (Ast)"
+                  value={((1000 / Math.min(barSpacingVI, barSpacingVMid, barSpacingVJ)) * (Math.PI * Math.pow(barDiamV, 2)) / 4 * (Lw / 1000)).toFixed(0)}
+                  unit="mm²"
+                  status={isSafeTension ? 'pass' : 'fail'}
+                  reference={`${barDiamV}mm @ ${Math.min(barSpacingVI, barSpacingVMid, barSpacingVJ)}mm`}
+                  details={`Capacity ratio: ${(((1000 / Math.min(barSpacingVI, barSpacingVMid, barSpacingVJ)) * (Math.PI * Math.pow(barDiamV, 2)) / 4 * (Lw / 1000)) / Math.max(calculations.Ast_req, 1)).toFixed(2)}`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Boundary Elements */}
+            <ProfessionalInputGroup title="Boundary Element Requirement - AS 3600 Clause 11.7" description="Special detailing for high compression zones">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Max Extreme Fiber Stress"
+                  value={calculations.boundary.stress.toFixed(2)}
+                  unit="MPa"
+                  status={calculations.boundary.needsBoundary ? 'fail' : 'pass'}
+                  reference="σ = N*/Ag + M*/Z"
+                  details={`Limit: 0.15fc = ${(0.15 * fc).toFixed(1)}MPa`}
+                />
+                <DesignResultCard
+                  title={calculations.boundary.needsBoundary ? 'Boundary Elements Required' : 'Boundary Elements Not Required'}
+                  value={calculations.boundary.needsBoundary ? `${calculations.boundary.boundaryLength.toFixed(0)}` : '—'}
+                  unit={calculations.boundary.needsBoundary ? 'mm' : ''}
+                  status={calculations.boundary.needsBoundary ? 'fail' : 'pass'}
+                  reference="Clause 11.7.1"
+                  details={`Applied stress ${calculations.boundary.needsBoundary ? '>' : '<'} limit`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Shear Capacity by Zone */}
+            <ProfessionalInputGroup title="Shear Capacity by Zone (ULS) - AS 3600 Clause 11.6" description="General method with zone-based strength verification">
+              <div className="space-y-4">
+                {['I', 'Mid', 'J'].map(zone => {
+                  const phiVu = zone === 'I' ? calculations.phiVuI : zone === 'Mid' ? calculations.phiVuMid : calculations.phiVuJ;
+                  const barSpacing = zone === 'I' ? barSpacingHI : zone === 'Mid' ? barSpacingHMid : barSpacingHJ;
+                  const isSafe = vStar <= phiVu;
+                  return (
+                    <div key={zone} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <DesignResultCard
+                        title={`Design Shear V* (${zone}-Zone)`}
+                        value={vStar.toFixed(0)}
+                        unit="kN"
+                        status={isSafe ? 'pass' : 'fail'}
+                        reference="Load combination factored"
+                        details={`Zone ${zone === 'Mid' ? 'midspan' : zone === 'I' ? 'near I-end' : 'near J-end'}`}
+                      />
+                      <DesignResultCard
+                        title={`Shear Capacity φVu (${zone}-Zone)`}
+                        value={phiVu.toFixed(1)}
+                        unit="kN"
+                        status={isSafe ? 'pass' : 'fail'}
+                        reference={`${barDiamH}mm @ ${barSpacing}mm; φ = 0.75`}
+                        details={`Vuc = ${calculations.Vuc.toFixed(1)}kN + steel contribution`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Overall Status */}
+            <div className={cn(
+              "p-6 border-2 rounded-lg",
+              isSafe
+                ? "bg-green-50 border-green-300"
+                : "bg-red-50 border-red-300"
+            )}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 mb-2">
+                    Structural Adequacy Check
+                  </h4>
+                  <p className="text-[10px] font-mono opacity-60">All design checks evaluated at ULS with appropriate safety factors</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold font-mono uppercase tracking-widest">
+                    {isSafe ? '✓ PASS' : '✗ FAIL'}
+                  </p>
+                  <p className="text-[10px] font-mono opacity-40 mt-2">
+                    {isSafeTension && calculations.isSafeShear ? 'All checks satisfied' : 'Review failed check above'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <InputGroup title="C&T Analysis">
             <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
               <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Compression & Tension</p>

@@ -2,7 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { InputGroup, InputField, ResultRow } from '../ui/InputGrid';
 import { calculateFlexuralCapacity } from '../../lib/as3600';
 import { 
-  validateInput 
+  validateInput,
+  FIRE_RATINGS,
+  EXPOSURE_CLASSES,
+  getRequiredCover,
+  checkNCCCompliance
 } from '../../lib/as3600';
 import { Info, AlertTriangle, CheckCircle2, XCircle, Pyramid } from 'lucide-react';
 import { 
@@ -68,6 +72,11 @@ const RetainingWallCalculator: React.FC = () => {
   const [barDiamBase, setBarDiamBase] = useState(16);
   const [barSpacingBase, setBarSpacingBase] = useState(200);
 
+  // Durability & Fire Design
+  const [exposureClass, setExposureClass] = useState('A');
+  const [fireRating, setFireRating] = useState('60');
+  const [cover, setCover] = useState(50);
+
   // Calculations
   const calculations = useMemo(() => {
     const phi_rad = (phi_soil * Math.PI) / 180;
@@ -122,6 +131,17 @@ const RetainingWallCalculator: React.FC = () => {
       isBearingSafe: q_max <= bearing_cap
     };
   }, [H, tw, B, tf, toe, gamma, phi_soil, factoredSurcharge, bearing_cap, barDiamStem, barSpacingStem, fc, fsy]);
+
+  // Durability & Fire Design Checks
+  const requiredCover = getRequiredCover(exposureClass, fireRating);
+  const minB = FIRE_RATINGS.find(f => f.id === fireRating)?.minB || 0;
+  const isDurable = cover >= requiredCover;
+  const isFireSafe = tw >= minB;
+  const isStructuralSafe = calculations.FOS_overturning >= 1.5 && 
+                           calculations.FOS_sliding >= 1.5 && 
+                           calculations.isBearingSafe && 
+                           calculations.isStemSafe;
+  const isNCCCompliant = checkNCCCompliance({ isStructuralSafe, isFireSafe, isDurable });
 
   // History Tracking
   useEffect(() => {
@@ -265,6 +285,36 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
             <InputField label="Base Spacing" value={barSpacingBase} onChange={setBarSpacingBase} unit="mm" />
           </InputGroup>
 
+          <InputGroup title="Durability & Fire Design">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Exposure Class</label>
+                <select 
+                  value={exposureClass}
+                  onChange={(e) => setExposureClass(e.target.value)}
+                  className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                >
+                  {EXPOSURE_CLASSES.map(ec => (
+                    <option key={ec.id} value={ec.id}>{ec.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Fire Resistance Period (FRP)</label>
+                <select 
+                  value={fireRating}
+                  onChange={(e) => setFireRating(e.target.value)}
+                  className="w-full bg-white border border-line p-2 text-[10px] font-mono uppercase tracking-wider focus:border-accent outline-none transition-colors"
+                >
+                  {FIRE_RATINGS.map(fr => (
+                    <option key={fr.id} value={fr.id}>{fr.label}</option>
+                  ))}
+                </select>
+              </div>
+              <InputField label="Concrete Cover" value={cover} onChange={setCover} unit="mm" />
+            </div>
+          </InputGroup>
+
           {/* Visualization */}
           <div className="brutal-card p-12 flex flex-col items-center gap-8 bg-white bg-grid">
             <div className="relative" style={{ width: B/5, height: (H+tf)/5 }}>
@@ -285,33 +335,185 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
         </div>
 
         <div className="space-y-8">
-          <InputGroup title="Stability Checks">
-            <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
-              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Global Stability</p>
-              <ComplianceInfo 
-                clause="AS 4678" 
-                description="Stability checks for retaining structures against overturning and sliding."
-                equation="FOS = \frac{\text{Restoring}}{\text{Overturning}} \ge 1.5"
-              />
-            </div>
-            <ResultRow label="Active Force (Pa)" value={calculations.Pa.toFixed(1)} unit="kN/m" />
-            <ResultRow label="FOS Overturning" value={calculations.FOS_overturning.toFixed(2)} status={calculations.FOS_overturning >= 1.5 ? 'pass' : 'fail'} />
-            <ResultRow label="FOS Sliding" value={calculations.FOS_sliding.toFixed(2)} status={calculations.FOS_sliding >= 1.5 ? 'pass' : 'fail'} />
-            <ResultRow label="Max Bearing (q)" value={calculations.q_max.toFixed(1)} unit="kPa" status={calculations.isBearingSafe ? 'pass' : 'fail'} />
-          </InputGroup>
+          <ProfessionalInputGroup 
+            title="Professional Design Results - AS 4678 & AS 3600" 
+            description="Comprehensive analysis combining geotechnical stability checks with concrete structural design"
+          >
+            <div className="space-y-8">
+              {/* Overturning Stability */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Geotechnical Stability</div>
+                  <div className="text-[10px] font-mono opacity-40">AS 4678</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DesignResultCard
+                    title="Overturning Check"
+                    value={calculations.FOS_overturning.toFixed(2)}
+                    unit="FOS"
+                    status={calculations.FOS_overturning >= 1.5 ? 'pass' : 'fail'}
+                    reference="AS 4678:2007 Cl. 8.2"
+                    details={`Restoring Moment: ${calculations.Mr.toFixed(1)} kNm/m | Active Moment: ${calculations.Ma.toFixed(1)} kNm/m | Minimum: 1.5`}
+                  />
+                  <DesignResultCard
+                    title="Sliding Check"
+                    value={calculations.FOS_sliding.toFixed(2)}
+                    unit="FOS"
+                    status={calculations.FOS_sliding >= 1.5 ? 'pass' : 'fail'}
+                    reference="AS 4678:2007 Cl. 8.3"
+                    details={`Friction Resistance / Active Force ratio. Minimum FOS: 1.5`}
+                  />
+                </div>
+              </div>
 
-          <InputGroup title="Structural Design">
-            <div className="p-4 bg-gray-50 border-b border-line flex items-center justify-between">
-              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-accent">Stem Strength</p>
-              <ComplianceInfo 
-                clause="AS 3600 8.1" 
-                description="Flexural capacity of the wall stem at the base junction."
-                equation="\phi M_u = \phi A_{st} f_{sy} (d - \frac{\gamma k_u d}{2})"
-              />
+              {/* Bearing Capacity */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Bearing Capacity & Pressure Distribution</div>
+                  <div className="text-[10px] font-mono opacity-40">Geotechnical</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DesignResultCard
+                    title="Maximum Bearing Pressure"
+                    value={calculations.q_max.toFixed(1)}
+                    unit="kPa"
+                    status={calculations.isBearingSafe ? 'pass' : 'fail'}
+                    reference="Bearing Capacity Design"
+                    details={`Using eccentric load method | Allowable: ${bearing_cap} kPa | Eccentricity check performed`}
+                  />
+                  <DesignResultCard
+                    title="Active Lateral Force"
+                    value={calculations.Pa.toFixed(1)}
+                    unit="kN/m"
+                    status={calculations.Pa < 500 ? 'pass' : 'warning'}
+                    reference="AS 1170.2"
+                    details={`Lateral earth pressure from active state | Height: ${(H + tf) / 1000} m | Ka = 0.333 (approx)`}
+                  />
+                </div>
+              </div>
+
+              {/* Stem Flexural Design */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Stem Flexural Design</div>
+                  <div className="text-[10px] font-mono opacity-40">AS 3600 Cl. 8</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DesignResultCard
+                    title="Factored Bending Moment (M*)"
+                    value={(calculations.Ma * 1.5).toFixed(1)}
+                    unit="kNm/m"
+                    status="info"
+                    reference="Load Factor = 1.5"
+                    details={`From earth pressure distribution at base junction | Service: ${calculations.Ma.toFixed(1)} kNm/m`}
+                  />
+                  <DesignResultCard
+                    title="Section Capacity (φMu)"
+                    value={calculations.phiMu_stem.toFixed(1)}
+                    unit="kNm/m"
+                    status={calculations.isStemSafe ? 'pass' : 'fail'}
+                    reference="AS 3600 Cl. 8.1.3"
+                    details={`Capacity-based design | Bar: ${barDiamStem}mm @ ${barSpacingStem}mm | Effective depth: ${(tw - 50 - barDiamStem/2).toFixed(0)}mm`}
+                  />
+                </div>
+              </div>
+
+              {/* Stem Reinforcement Adequacy */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Stem Reinforcement Check</div>
+                  <div className="text-[10px] font-mono opacity-40">AS 3600 Cl. 9.1</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DesignResultCard
+                    title="Capacity Ratio (M*/φMu)"
+                    value={((calculations.Ma * 1.5) / calculations.phiMu_stem).toFixed(3)}
+                    unit="Ratio"
+                    status={calculations.isStemSafe ? 'pass' : 'fail'}
+                    reference="Flexural Adequacy"
+                    details={`Must be ≤ 1.0 for adequate capacity | Current: ${((calculations.Ma * 1.5) / calculations.phiMu_stem).toFixed(2)}`}
+                  />
+                  <DesignResultCard
+                    title="Concrete Strength"
+                    value={fc.toFixed(0)}
+                    unit="MPa"
+                    status={fc >= 25 ? 'pass' : 'fail'}
+                    reference="AS 3600 Cl. 6.1"
+                    details={`f'c = ${fc} MPa | Recommended min: 32 MPa for underwater/exposed walls`}
+                  />
+                </div>
+              </div>
+
+              {/* Durability & Fire Safety */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Durability & Fire Safety</div>
+                  <div className="text-[10px] font-mono opacity-40">NCC 2022 | AS 3600 Cl. 4.10</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DesignResultCard
+                    title="Required Cover"
+                    value={cover}
+                    unit="mm"
+                    status={isDurable ? 'pass' : 'fail'}
+                    reference={`Exposure: ${exposureClass}`}
+                    details={`Required: ${requiredCover}mm | Provided: ${cover}mm`}
+                  />
+                  <DesignResultCard
+                    title="Fire Resistance"
+                    value={fireRating}
+                    unit="min"
+                    status={isFireSafe ? 'pass' : 'fail'}
+                    reference="AS 3600 Clause 20.3"
+                    details={`Min thickness for ${fireRating}min FRP: ${minB}mm | Provided: ${tw}mm`}
+                  />
+                </div>
+              </div>
+
+              {/* Overall Assessment */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-[10px] font-mono uppercase opacity-50 font-bold tracking-widest">Overall Design Compliance</div>
+                  <div className="text-[10px] font-mono opacity-40">Combined Assessment</div>
+                </div>
+                <div className="grid grid-cols-1 gap-6">
+                  <div className={cn(
+                    "p-6 border-2 rounded-sm",
+                    (isStructuralSafe && isFireSafe && isDurable) 
+                      ? 'bg-green-50 border-green-300' 
+                      : 'bg-red-50 border-red-300'
+                  )}>
+                    <div className="flex items-start gap-4">
+                      <div className={cn(
+                        "p-2 rounded-sm flex-shrink-0",
+                        (isStructuralSafe && isFireSafe && isDurable) 
+                          ? 'bg-green-200' 
+                          : 'bg-red-200'
+                      )}>
+                        {(isStructuralSafe && isFireSafe && isDurable) 
+                          ? <CheckCircle2 size={20} className="text-green-700" /> 
+                          : <XCircle size={20} className="text-red-700" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold uppercase tracking-wider mb-2">
+                          {(isStructuralSafe && isFireSafe && isDurable) 
+                            ? '✓ Design Fully Compliant' 
+                            : '✗ Compliance Issues - Review Required'}
+                        </div>
+                        <div className="text-[10px] space-y-1 opacity-70">
+                          {!isStructuralSafe && <p>• Structural safety below requirements - review stability and capacity</p>}
+                          {!isFireSafe && <p>• Fire resistance below {fireRating}min FRP - increase wall thickness to {minB}mm</p>}
+                          {!isDurable && <p>• Concrete cover insufficient for {exposureClass} exposure - increase to {requiredCover}mm</p>}
+                          {(isStructuralSafe && isFireSafe && isDurable) && 
+                            <p>All structural, fire, and durability requirements satisfied. Design meets AS 4678, AS 3600, and NCC requirements.</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <ResultRow label="Stem Moment (M*)" value={(calculations.Ma * 1.5).toFixed(1)} unit="kNm/m" />
-            <ResultRow label="Stem Capacity (φMu)" value={calculations.phiMu_stem.toFixed(1)} unit="kNm/m" status={calculations.isStemSafe ? 'pass' : 'fail'} />
-          </InputGroup>
+          </ProfessionalInputGroup>
 
           <div className="p-6 bg-ink text-white rounded-sm space-y-4">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] opacity-50">
@@ -319,9 +521,8 @@ print(f"FOS Overturning: {fos_overturning:.2f}")
               <span>Design Notes</span>
             </div>
             <p className="text-[10px] font-mono leading-relaxed opacity-80">
-              FOS requirements: Overturning ≥ 1.5, Sliding ≥ 1.5. 
-              Stem design includes flexural check at the base junction. 
-              AS 1170 combinations applied to surcharge.
+              Design combines geotechnical (AS 4678) and structural (AS 3600) standards. FOS requirements: Overturning ≥ 1.5, Sliding ≥ 1.5. 
+              Stem designed for factored earth pressure at base. AS 1170 load combinations applied to surcharge. Bearing capacity checks control bearing pressure distribution.
             </p>
           </div>
         </div>

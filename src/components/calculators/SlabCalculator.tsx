@@ -679,6 +679,210 @@ phi_mu = 0.85 * mu
             <ResultRow label="Max Spacing (3h)" value={barSpacingX <= Math.min(3 * h, 500) ? 'Pass' : 'Fail'} status={barSpacingX <= Math.min(3 * h, 500) ? 'pass' : 'fail'} />
           </InputGroup>
 
+          {/* Professional Results Section */}
+          <div className="space-y-6 mt-12 pt-12 border-t-2 border-slate-200">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-1 h-8 bg-blue-600 rounded-full" />
+              <h3 className="text-2xl font-bold text-slate-900">Professional Design Results</h3>
+            </div>
+
+            {/* Flexural Design Results */}
+            <ProfessionalInputGroup 
+              title={`Flexural Design (ULS) - AS 3600 Clause ${slabType === 'one-way' ? '8.1' : '8.3'}`}
+              description={slabType === 'one-way' ? 'One-way linear design with rectangular stress block' : slabType === 'two-way' ? 'Two-way design with simplified moment coefficients' : slabType === 'waffle' ? 'Waffle slab as series of T-beams' : 'Footing bearing and bending design'}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Applied Moment X (Mx*)"
+                  value={mxStar.toFixed(2)}
+                  unit="kNm/m"
+                  status={statusX === 'pass' ? 'pass' : 'fail'}
+                  reference="AS 1170 Load Combination"
+                  details={`Design moment in X direction`}
+                />
+                <DesignResultCard
+                  title="Capacity X (φMu_x)"
+                  value={flexureX.phiMu.toFixed(2)}
+                  unit="kNm/m"
+                  status={statusX === 'pass' ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 8.1"
+                  details={`φ = 0.85 | Capacity ratio: ${(mxStar / flexureX.phiMu).toFixed(2)}`}
+                />
+                {flexureY && (
+                  <>
+                    <DesignResultCard
+                      title="Applied Moment Y (My*)"
+                      value={myStar.toFixed(2)}
+                      unit="kNm/m"
+                      status={statusY === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 1170 Load Combination"
+                      details={`Design moment in Y direction`}
+                    />
+                    <DesignResultCard
+                      title="Capacity Y (φMu_y)"
+                      value={flexureY.phiMu.toFixed(2)}
+                      unit="kNm/m"
+                      status={statusY === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 3600 Clause 8.1 / 8.3"
+                      details={`φ = 0.85 | Capacity ratio: ${(myStar / flexureY.phiMu).toFixed(2)}`}
+                    />
+                  </>
+                )}
+                <DesignResultCard
+                  title="Reinforcement Area (As_x)"
+                  value={AstX.toFixed(0)}
+                  unit="mm²/m"
+                  status={isMinAstPass ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 9.1.1"
+                  details={`Min: ${minAst.toFixed(0)} mm²/m | Max: ${((h * 1000) * 0.04).toFixed(0)} mm²/m`}
+                />
+                <DesignResultCard
+                  title="Bar Spacing"
+                  value={barSpacingX.toFixed(0)}
+                  unit="mm"
+                  status={barSpacingX <= Math.min(3 * h, 500) ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 9.4.1"
+                  details={`Max: ${Math.min(3 * h, 500).toFixed(0)}mm | For crack control`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Punching/Bearing Results */}
+            <ProfessionalInputGroup 
+              title={slabType === 'footing' ? 'Bearing & Shear Design (ULS) - AS 3600 Clause 10.5' : 'Punching Shear Design (ULS) - AS 3600 Clause 8.4'}
+              description={slabType === 'footing' ? 'Footing bearing pressure and one-way shear' : 'Punching shear at column/load interface'}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {slabType === 'footing' ? (
+                  <>
+                    <DesignResultCard
+                      title="Max Bearing Pressure"
+                      value={bearing?.q_max.toFixed(1) || 'N/A'}
+                      unit="kPa"
+                      status={statusBearing === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 3600 Clause 12.2"
+                      details={`Allowable: ${allowableBearing} kPa`}
+                    />
+                    <DesignResultCard
+                      title="Min Bearing Pressure"
+                      value={bearing?.q_min.toFixed(1) || 'N/A'}
+                      unit="kPa"
+                      status="info"
+                      reference="Footing design"
+                      details={`Should be ≥ 0 (no tension)`}
+                    />
+                    <DesignResultCard
+                      title="One-Way Shear (V*)"
+                      value={footingShear?.VStar?.toFixed(0) || 'N/A'}
+                      unit="kN"
+                      status={statusFootingShear === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 3600 Clause 8.2"
+                      details={`At depth d from face`}
+                    />
+                    <DesignResultCard
+                      title="Shear Capacity (φVu)"
+                      value={footingShear?.phiVu?.toFixed(0) || 'N/A'}
+                      unit="kN"
+                      status={statusFootingShear === 'pass' ? 'pass' : 'fail'}
+                      reference="General method"
+                      details={`φ = 0.85 | Capacity ratio: ${(footingShear ? (footingShear.VStar / footingShear.phiVu).toFixed(2) : 'N/A')}`}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <DesignResultCard
+                      title="Applied Punching (V*)"
+                      value={vStarPunch.toFixed(0)}
+                      unit="kN"
+                      status={statusPunching === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 1170 Load Combination"
+                      details={`Design shear at column/load`}
+                    />
+                    <DesignResultCard
+                      title="Punching Capacity (φVuo)"
+                      value={punching.phiVuo.toFixed(0)}
+                      unit="kN"
+                      status={statusPunching === 'pass' ? 'pass' : 'fail'}
+                      reference="AS 3600 Clause 8.4.2"
+                      details={`φ = 0.85 | Capacity ratio: ${(vStarPunch / punching.phiVuo).toFixed(2)}`}
+                    />
+                    <DesignResultCard
+                      title="Perimeter (u)"
+                      value={punching.perimeter.toFixed(0)}
+                      unit="mm"
+                      status="info"
+                      reference="Critical section at d/2 from column"
+                      details={`Effective depth: ${punching.deff.toFixed(0)}mm`}
+                    />
+                    <DesignResultCard
+                      title="Database Check"
+                      value={punching.phiVuo.toFixed(0)}
+                      unit="kN"
+                      status="info"
+                      reference="AS 3600 Clause 8.4"
+                      details={`Concrete contribution calculated`}
+                    />
+                  </>
+                )}
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Serviceability Checks */}
+            <ProfessionalInputGroup 
+              title="Serviceability Checks (SLS) - AS 3600 Clauses 9.2 & 9.4" 
+              description="Deflection and crack width compliance"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Deflection Ratio"
+                  value={`L/${deflection.ratio.toFixed(1)}`}
+                  status={statusDeflection === 'pass' ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 9.4.4"
+                  details={`Limit: L/${deflection.limit.toFixed(1)} | ${statusDeflection}`}
+                />
+                <DesignResultCard
+                  title="Crack Control"
+                  value={crackControl.isSafe ? 'COMPLIANT' : 'EXCEED'}
+                  status={crackControl.isSafe ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 9.4.1"
+                  details={`Max spacing: ${crackControl.maxSpacing}mm | Max bar: ${crackControl.maxBarDiam}mm`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+
+            {/* Durability & Fire Results */}
+            <ProfessionalInputGroup 
+              title="Durability & Fire Safety - NCC 2022" 
+              description="Exposure classification and fire resistance requirements"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <DesignResultCard
+                  title="Required Cover"
+                  value={requiredCover}
+                  unit="mm"
+                  status={isDurable ? 'pass' : 'fail'}
+                  reference={`Exposure: ${exposureClass}`}
+                  details={`Required: ${requiredCover}mm | Provided: ${cover}mm`}
+                />
+                <DesignResultCard
+                  title="Fire Rating"
+                  value={fireRating}
+                  unit="min"
+                  status={isFireSafe ? 'pass' : 'fail'}
+                  reference="AS 3600 Clause 20.3"
+                  details={`Min thickness for ${fireRating}min FRP: ${minB * 2}mm | Provided: ${(h * 1000).toFixed(0)}mm`}
+                />
+                <DesignResultCard
+                  title="Compliance Status"
+                  value={isNCCCompliant ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                  status={isNCCCompliant ? 'pass' : 'fail'}
+                  reference="NCC Performance Requirements B1.1 & B1.2"
+                  details={`Strength: ${isStructuralSafe ? 'Pass' : 'Fail'} | Fire: ${isFireSafe ? 'Pass' : 'Fail'} | Durability: ${isDurable ? 'Pass' : 'Fail'}`}
+                />
+              </div>
+            </ProfessionalInputGroup>
+          </div>
+
           <div className="p-6 bg-ink text-white rounded-sm space-y-4">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] opacity-50">
               <Info size={12} />
